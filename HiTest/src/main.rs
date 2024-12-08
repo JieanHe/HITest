@@ -4,6 +4,8 @@ use serde::Deserialize;
 use std::fs;
 
 use libparser::*;
+mod sample;
+use sample::prepare_sample_files;
 
 #[derive(Debug, Deserialize)]
 struct Config {
@@ -44,14 +46,19 @@ fn parse_args(matches: &ArgMatches) -> RunArgs {
     let test_path: String;
     let libs_path: String;
 
-    libs_path = matches
-        .value_of("libs")
-        .expect("failed to get lib path")
-        .to_string();
-    test_path = matches
-        .value_of("cases")
-        .expect("failed to get lib path")
-        .to_string();
+    if matches.is_present("sample") {
+        info!("Run as sample mode, run `Hitest -t you_test_case.toml` to run your test cases.");
+        (libs_path, test_path) = prepare_sample_files();
+    } else {
+        libs_path = matches
+            .value_of("libs")
+            .expect("failed to get lib path")
+            .to_string();
+        test_path = matches
+            .value_of("cases")
+            .expect("failed to get lib path")
+            .to_string();
+    }
 
     let mut log_lvl: &str = matches.value_of("log").unwrap_or("info");
     let valid_lvl = ["info", "error", "debug"];
@@ -93,6 +100,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .value_name("libs config file")
                 .help("a toml file contains all dependency libs")
                 .takes_value(true)
+                .required(false),
+        )
+        .arg(
+            Arg::with_name("sample")
+                .long("sample")
+                .value_name("sample mode")
+                .help("run as sample mode, to see the format of config files")
+                .takes_value(false)
                 .required(false),
         )
         .get_matches();
