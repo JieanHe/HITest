@@ -86,6 +86,52 @@ pub fn failed_get_func(func: &str) -> String {
     format!("failed to get function {}", func)
 }
 
+pub fn compile_lib(file: PathBuf) {
+    let file_name = file
+        .file_name()
+        .expect(&format!("invlaid file {:?}", &file))
+        .to_str()
+        .and_then(|s| s.split('.').next())
+        .unwrap();
+    let ext = if env::var("TARGET")
+        .unwrap_or("windows".to_string())
+        .contains("windows")
+    {
+        ".dll"
+    } else {
+        ".so"
+    };
+
+    let lib_path = file.parent().unwrap().join(file_name.to_owned() + ext);
+
+    let compiler = "gcc";
+    // compile library
+    let status = Command::new(compiler)
+        .arg("--shared")
+        .arg("-fPIC")
+        .arg(file)
+        .arg("-o")
+        .arg(&lib_path)
+        .status();
+
+    match status {
+        Ok(exit_status) => {
+            if exit_status.success() {
+                if Path::new(&lib_path).exists() {
+                    println!("Library file was created successfully.");
+                } else {
+                    println!("Library file was not created.");
+                }
+            } else {
+                println!("Command failed to executed.");
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to execute command: {}", e);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -95,6 +141,15 @@ mod tests {
 
     #[test]
     fn test_libmalloc() {
+
+        let binding = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
+        let libmalloc = Path::new(&binding)
+            .parent()
+            .unwrap()
+            .join("sample")
+            .join("libmalloc.c");
+        compile_lib(libmalloc);
+
         let config_path = env::current_dir().unwrap().join("../sample/dependlibs.toml");
         let config_path = config_path.to_str().unwrap();
 
