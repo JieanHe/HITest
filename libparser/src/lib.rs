@@ -42,10 +42,30 @@ type FnPtr = extern "C" fn(
     c_longlong,
 ) -> c_long;
 
+struct FnAttr {
+    ptr: FnPtr,
+    paras: Vec<String>,
+}
+impl FnAttr {
+    pub fn new(ptr: FnPtr, paras: Vec<String>) -> Self {
+        FnAttr { ptr, paras }
+    }
+
+    pub fn run(&self, params: &[c_longlong]) -> i32 {
+        if params.len() < 8 {
+            panic!("Insufficient parameters provided");
+        }
+
+        (self.ptr)(
+            params[0], params[1], params[2], params[3], params[4], params[5], params[6], params[7],
+        )
+    }
+}
+
 // 引入生命周期参数 'a
 pub struct LibParse {
     libs: Vec<Arc<Library>>,
-    funcs: HashMap<String, Arc<Box<FnPtr>>>,
+    funcs: HashMap<String, Arc<Box<FnAttr>>>,
 }
 
 impl LibParse {
@@ -71,17 +91,43 @@ impl LibParse {
                 let func_name = func.name;
                 let c_func_name = CString::new(func_name.clone())?;
                 let func_ptr: Symbol<FnPtr> = unsafe { lib_arc.get(c_func_name.as_bytes())? };
-                self.funcs.insert(func_name, Arc::new(Box::new(*func_ptr)));
+                let func_attr = FnAttr::new(*func_ptr, func.paras);
+                self.funcs.insert(func_name, Arc::new(Box::new(func_attr)));
             }
         }
         Ok(self)
     }
 
-    pub fn get_func(&self, name: &String) -> Result<Arc<Box<FnPtr>>, Box<dyn Error>> {
+    pub fn get_func(&self, name: &str) -> Result<Arc<Box<FnAttr>>, Box<dyn Error>> {
         match self.funcs.get(name) {
-            Some(arc_box_func_ptr) => Ok(arc_box_func_ptr.clone()), // 直接返回 Arc 的克隆
+            Some(arc_box_func_attr) => Ok(arc_box_func_attr.clone()), // 直接返回 Arc 的克隆
             None => Err(format!("Function '{}' not found", name).into()),
         }
+    }
+
+    pub fn call_func(&self, func_name: &str, config_params: &Vec<String>) -> i32 {
+        let func_attr = self.get_func(func_name).expect(&failed_get_func(func_name));
+        let mut params: Vec<i64> = Vec::new();
+
+        for key in &func_attr.paras {
+            for value in config_params {
+                if let Some(value_key) = value.strip_prefix(key) {
+                    if let Some(index) = value_key.strip_prefix("=") {
+                        if let Ok(num) = index.parse::<i64>() {
+                            params.push(num);
+                            break;
+                        } else {
+                            println!("Failed to parse '{}' as i64", index);
+                        }
+                    } else {
+                        println!("cannot find param {} of function {}", key, func_name);
+                    }
+                }
+            }
+        }
+
+        params.resize(8, 0);
+        func_attr.run(&params).try_into().unwrap()
     }
 }
 
@@ -181,33 +227,15 @@ funcs = [
         libparse
             .load_config(&config_path)
             .expect(&failed_load_file(&config_path));
-
-        // test: malloc -> write -> read -> free
-        let my_malloc = libparse
-            .get_func(&"my_malloc".to_string())
-            .expect(&failed_get_func("my_malloc"));
-        my_malloc(100, 0, 0, 0, 0, 0, 0, 0);
-
-        for idx in 0..25 {
-            let mut rng: rand::rngs::ThreadRng = rand::thread_rng();
-            let random_number: i32 = rng.gen();
-
-            let my_write32 = libparse
-                .get_func(&"my_write32".to_string())
-                .expect(&failed_get_func("my_write32"));
-            my_write32(0, idx * 4, random_number.into(), 0, 0, 0, 0, 0);
-
-            let my_read32 = libparse
-                .get_func(&"my_read32".to_string())
-                .expect(&failed_get_func("my_read32"));
-            let v = my_read32(0, idx * 4, 0, 0, 0, 0, 0, 0);
-
-            assert_eq!(v, random_number);
-        }
-
-        let my_free = libparse
-            .get_func(&"my_free".to_string())
-            .expect(&failed_get_func("my_free"));
-        my_free(0, 0, 0, 0, 0, 0, 0, 0);
+        assert_eq!(libparse.funcs.len(), 4);
+        assert_eq!(libparse.get_func("my_malloc").unwrap().paras.len(), 2);
+        assert_eq!(libparse.get_func("my_free").unwrap().paras.len(), 1);
+        assert_eq!(libparse.get_func("my_read32").unwrap().paras.len(), 2);
+        assert_eq!(libparse.get_func("my_write32").unwrap().paras.len(), 3);
+        assert_eq!(libparse.call_func("my_malloc", &vec!["len=4".to_string(), "mem_idx=1".to_string()]), 0);
+        assert_eq!(libparse.call_func("my_write32", &vec!["offset=0".to_string(), "mem_idx=1".to_string(),"val=888".to_string()]), 0);
+        assert_eq!(libparse.call_func("my_read32", &vec!["offset=0".to_string(), "mem_idx=1".to_string()]), 888);
+        assert_eq!(libparse.call_func("my_free", &vec!["mem_idx=1".to_string()]), 0);
+        
     }
 }

@@ -22,7 +22,7 @@ struct Test {
 struct Cmd {
     opfunc: String,
     expect_res: i32,
-    args: Vec<i64>,
+    args: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -169,93 +169,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 cmd.opfunc, cmd.args, cmd.expect_res
             );
 
-            let args: Vec<i64> = cmd.args;
-
-            let func = libparser
-                .get_func(&cmd.opfunc)
-                .expect("get function failed");
-
-            let ret = match args.len() {
-                0 => func(0, 0, 0, 0, 0, 0, 0, 0),
-                1 => func(args[0].try_into().unwrap(), 0, 0, 0, 0, 0, 0, 0),
-                2 => func(
-                    args[0].try_into().unwrap(),
-                    args[1].try_into().unwrap(),
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                ),
-                3 => func(
-                    args[0].try_into().unwrap(),
-                    args[1].try_into().unwrap(),
-                    args[2].try_into().unwrap(),
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                ),
-                4 => func(
-                    args[0].try_into().unwrap(),
-                    args[1].try_into().unwrap(),
-                    args[2].try_into().unwrap(),
-                    args[3].try_into().unwrap(),
-                    0,
-                    0,
-                    0,
-                    0,
-                ),
-                5 => func(
-                    args[0].try_into().unwrap(),
-                    args[1].try_into().unwrap(),
-                    args[2].try_into().unwrap(),
-                    args[3].try_into().unwrap(),
-                    args[4].try_into().unwrap(),
-                    0,
-                    0,
-                    0,
-                ),
-                6 => func(
-                    args[0].try_into().unwrap(),
-                    args[1].try_into().unwrap(),
-                    args[2].try_into().unwrap(),
-                    args[3].try_into().unwrap(),
-                    args[4].try_into().unwrap(),
-                    args[5].try_into().unwrap(),
-                    0,
-                    0,
-                ),
-                7 => func(
-                    args[0].try_into().unwrap(),
-                    args[1].try_into().unwrap(),
-                    args[2].try_into().unwrap(),
-                    args[3].try_into().unwrap(),
-                    args[4].try_into().unwrap(),
-                    args[5].try_into().unwrap(),
-                    args[6].try_into().unwrap(),
-                    0,
-                ),
-                8 => func(
-                    args[0].try_into().unwrap(),
-                    args[1].try_into().unwrap(),
-                    args[2].try_into().unwrap(),
-                    args[3].try_into().unwrap(),
-                    args[4].try_into().unwrap(),
-                    args[5].try_into().unwrap(),
-                    args[6].try_into().unwrap(),
-                    args[7].try_into().unwrap(),
-                ),
-                _ => {
-                    error!("parameters is too much, the lengh of parameter is limited to 8");
-                    -1
-                }
-            };
+            let ret: i32 = libparser.call_func(&cmd.opfunc, &cmd.args);
 
             if ret != cmd.expect_res {
-                error!("run cmd {} Failed!", cmd.opfunc);
+                error!(
+                    "run cmd {} Failed: [expect_res={}, res={}]",
+                    cmd.opfunc, cmd.expect_res, ret
+                );
                 succ = false;
                 break;
             }
