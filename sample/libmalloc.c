@@ -66,13 +66,15 @@ EXPORT int my_read32(int64_t in_idx, int64_t offset, int64_t p2, int64_t p3, int
     IDX_CHECK(in_idx);
     MEM_CHECK(in_idx);
 
-    return *(int *)(ADDR_ARR[in_idx] + offset);
+    uint64_t addr = (uint64_t)ADDR_ARR[in_idx] + offset;
+    return *(int *)addr;
 }
 
-EXPORT int my_write32(int64_t in_idx, int64_t val, int64_t offset, int64_t p3, int64_t p4, int64_t p5, int64_t p6, int64_t p7)
+EXPORT int my_write32(int64_t in_idx, int64_t offset, int64_t val, int64_t p3, int64_t p4, int64_t p5, int64_t p6, int64_t p7)
 {
     IDX_CHECK(in_idx);
     MEM_CHECK(in_idx);
-    *(int *)(ADDR_ARR[in_idx] + offset) = val;
+    uint64_t addr = (uint64_t)ADDR_ARR[in_idx] + offset;
+    *(int *)addr = val;
     return 0;
 }

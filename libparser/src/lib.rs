@@ -22,7 +22,7 @@ struct LibConfig {
 #[derive(Deserialize)]
 struct LibFunc {
     name: String,
-    paras: Vec<String>
+    paras: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -148,7 +148,6 @@ mod tests {
 
     #[test]
     fn test_libmalloc() {
-
         let binding = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
         let libmalloc = Path::new(&binding)
             .parent()
@@ -157,7 +156,9 @@ mod tests {
             .join("libmalloc.c");
         compile_lib(libmalloc);
 
-        let config_path = env::current_dir().unwrap().join("../sample/dependlibs.toml");
+        let config_path = env::current_dir()
+            .unwrap()
+            .join("../sample/dependlibs.toml");
         let config_path = config_path.to_str().unwrap();
 
         // generate config file
@@ -169,7 +170,7 @@ funcs = [
     { name = "my_malloc", paras = ["len", "mem_idx"] },
     { name = "my_free", paras = ["mem_idx"] },
     { name = "my_read32", paras = ["mem_idx", "offset"] },
-    { name = "my_write32", paras = ["mem_idx", "val"] }
+    { name = "my_write32", paras = ["mem_idx", "offset", "val"] }
 ]
 "#;
             let mut file = File::create(config_path).unwrap();
@@ -194,7 +195,7 @@ funcs = [
             let my_write32 = libparse
                 .get_func(&"my_write32".to_string())
                 .expect(&failed_get_func("my_write32"));
-            my_write32(0, random_number.into(), idx * 4, 0, 0, 0, 0, 0);
+            my_write32(0, idx * 4, random_number.into(), 0, 0, 0, 0, 0);
 
             let my_read32 = libparse
                 .get_func(&"my_read32".to_string())

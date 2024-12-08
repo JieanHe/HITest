@@ -22,7 +22,7 @@ funcs = [
     { name = "my_malloc", paras = ["len", "mem_idx"] },
     { name = "my_free", paras = ["mem_idx"] },
     { name = "my_read32", paras = ["mem_idx", "offset"] },
-    { name = "my_write32", paras = ["mem_idx", "val"] }
+    { name = "my_write32", paras = ["mem_idx", "offset", "val"] }
 ]
     "#;
         let mut file = File::create(SAMPLE_LIB_CFG).unwrap();
@@ -34,8 +34,8 @@ funcs = [
         [[tests]]
         cmds = [
             {opfunc = "my_malloc", expect_res = 0,  args = [4, 1, 0, 0, 0]}, #申请四个字节内存,首地址存入地址数组的idx1,预期成功返回0
-            {opfunc = "my_write32", expect_res = 0,  args = [1, 888]}, # 向地址数组的idx1写入魔鬼数字888,预期成功返回0
-            {opfunc = "my_read32", expect_res = 888,  args = [1]}, # 从地址数组idx1读回4个字节,预期读到888
+            {opfunc = "my_write32", expect_res = 0,  args = [1, 0,888]}, # 向地址数组的idx1的地址偏移0字节写入魔鬼数字888,预期成功返回0
+            {opfunc = "my_read32", expect_res = 888,  args = [1, 0]}, # 从地址数组idx1的地址偏移0字节读回4个字节,预期读到888
             {opfunc = "my_free", expect_res = 0, args = [1]}, # 释放地址数组的idx1对应内存,预期成功返回0
         ]
         name = "Test_Case_1"
@@ -44,8 +44,9 @@ funcs = [
         [[tests]]
         cmds = [
             {opfunc = "my_malloc", expect_res = 0,  args = [100, 4, 0, 0, 0]},  #申请100个字节内存,首地址存入地址数组的idx4,预期成功返回0
-            {opfunc = "my_write32", expect_res = 0,  args = [4, 888]}, # 向地址数组的idx4写入魔鬼数字888,预期成功返回0
-            {opfunc = "my_read32", expect_res = 888,  args = [4]}, # 从地址数组idx4读回4个字节,预期读到888
+            {opfunc = "my_write32", expect_res = 0,  args = [4, 4, 888]}, # 向地址数组的idx4写入魔鬼数字888,预期成功返回0
+            {opfunc = "my_read32", expect_res = 888,  args = [4, 4]}, # 从地址数组idx4的地址偏移4字节读回4个字节,预期读到888
+            {opfunc = "my_read32", expect_res = 0,  args = [4, 96]}, # 从地址数组idx4的地址偏移96字节读回4个字节,预期读到0
             {opfunc = "my_free", expect_res = -12, args = [1]}, # # 释放地址数组的idx1对应内存,预期失败返回-12
         ]
         name = "Test_Case_2"            
