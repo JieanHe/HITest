@@ -1,0 +1,10 @@
+[package]
+name = "libparser"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libloading = "0.8"
+toml = "0.8.19"
+serde = { version = "1.0", features = ["derive"] }
+rand = "0.8.5"
