@@ -20,9 +20,15 @@ struct LibConfig {
 }
 
 #[derive(Deserialize)]
+struct LibFunc {
+    name: String,
+    paras: Vec<String>
+}
+
+#[derive(Deserialize)]
 struct Lib {
     path: String,
-    funcs: Vec<String>,
+    funcs: Vec<LibFunc>,
 }
 
 type FnPtr = extern "C" fn(
@@ -61,7 +67,8 @@ impl LibParse {
             };
             let lib_arc = Arc::new(lib);
             self.libs.push(lib_arc.clone());
-            for func_name in libconfig.funcs {
+            for func in libconfig.funcs {
+                let func_name = func.name;
                 let c_func_name = CString::new(func_name.clone())?;
                 let func_ptr: Symbol<FnPtr> = unsafe { lib_arc.get(c_func_name.as_bytes())? };
                 self.funcs.insert(func_name, Arc::new(Box::new(*func_ptr)));
@@ -156,9 +163,15 @@ mod tests {
         // generate config file
         {
             let config_content = r#"
-libs = [
-    {path = "../sample/libmalloc.dll", funcs = ["my_malloc", "my_free", "my_read32", "my_write32"]},
-]"#;
+[[libs]]
+path = "../sample/libmalloc.dll"
+funcs = [
+    { name = "my_malloc", paras = ["len", "mem_idx"] },
+    { name = "my_free", paras = ["mem_idx"] },
+    { name = "my_read32", paras = ["mem_idx", "offset"] },
+    { name = "my_write32", paras = ["mem_idx", "val"] }
+]
+"#;
             let mut file = File::create(config_path).unwrap();
             let _ = file.write_all(config_content.as_bytes());
         }

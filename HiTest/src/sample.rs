@@ -16,9 +16,15 @@ pub fn prepare_sample_files() -> (String, String) {
     {
         // write libs config
         let config_content = r#"
-    libs = [
-        {path = "./sample/libmalloc.dll", funcs = ["my_malloc", "my_free", "my_read32", "my_write32"]},
-    ]"#;
+[[libs]]
+path = "./sample/libmalloc.dll"
+funcs = [
+    { name = "my_malloc", paras = ["len", "mem_idx"] },
+    { name = "my_free", paras = ["mem_idx"] },
+    { name = "my_read32", paras = ["mem_idx", "offset"] },
+    { name = "my_write32", paras = ["mem_idx", "val"] }
+]
+    "#;
         let mut file = File::create(SAMPLE_LIB_CFG).unwrap();
         let _ = file.write_all(config_content.as_bytes());
     }
