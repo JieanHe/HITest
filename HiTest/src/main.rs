@@ -26,23 +26,23 @@ struct Cmd {
 }
 
 #[derive(Debug)]
-struct RunArgs {
+struct run_args {
     test_cfg: String,
     log_lvl: String,
-    libscfg: String,
+    libs_cfg: String,
 }
 
-impl RunArgs {
-    pub fn new(test_cfg: String, log_lvl: String, libscfg: String) -> Self {
-        RunArgs {
+impl run_args {
+    pub fn new(test_cfg: String, log_lvl: String, libs_cfg: String) -> Self {
+        run_args {
             test_cfg,
             log_lvl,
-            libscfg,
+            libs_cfg,
         }
     }
 }
 
-fn parse_args(matches: &ArgMatches) -> RunArgs {
+fn parse_args(matches: &ArgMatches) -> run_args {
     let test_path: String;
     let libs_path: String;
 
@@ -65,95 +65,92 @@ fn parse_args(matches: &ArgMatches) -> RunArgs {
     if !valid_lvl.contains(&log_lvl) {
         log_lvl = "info";
     }
-    RunArgs::new(test_path, log_lvl.to_string(), libs_path)
+    run_args::new(test_path, log_lvl.to_string(), libs_path)
+}
+
+fn init_command_line() -> ArgMatches {
+    App::new("HITest")
+    .version("1.0")
+    .author("He Jiean")
+    .about("A Integration Testing tool for executing and verifying commands")
+    .arg(
+        Arg::with_name("cases")
+            .short('t')
+            .long("test_case")
+            .value_name("test cases config file")
+            .help(
+                r#"a toml file path wthich contains test cases, see sample/tc_libmalloc.toml"#,
+            )
+            .takes_value(true)
+            .required(false),
+    )
+    .arg(
+        Arg::with_name("log")
+            .long("log")
+            .value_name("log level")
+            .help("to control the log level, valid value contains [info, debug, error]. Invalid value will be set to 'info' as default ")
+            .takes_value(true)
+            .required(false),
+    )
+    .arg(
+        Arg::with_name("libs")
+            .short('l')
+            .long("libs")
+            .value_name("libs config file")
+            .help("a toml file contains all dependency libs")
+            .takes_value(true)
+            .required(false),
+    )
+    .arg(
+        Arg::with_name("sample")
+            .long("sample")
+            .value_name("sample mode")
+            .help("run as sample mode, to see the format of config files")
+            .takes_value(false)
+            .required(false),
+    )
+    .get_matches()
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // setting command agrs
-    let matches = App::new("HITest")
-        .version("1.0")
-        .author("He Jiean")
-        .about("A Integration Testing tool for executing and verifying commands")
-        .arg(
-            Arg::with_name("cases")
-                .short('t')
-                .long("test_case")
-                .value_name("test cases config file")
-                .help(
-                    r#"a toml file path wthich contains test cases, see sample/tc_libmalloc.toml"#,
-                )
-                .takes_value(true)
-                .required(false),
-        )
-        .arg(
-            Arg::with_name("log")
-                .long("log")
-                .value_name("log level")
-                .help("to control the log level, valid value contains [info, debug, error]. Invalid value will be set to 'info' as default ")
-                .takes_value(true)
-                .required(false),
-        )
-        .arg(
-            Arg::with_name("libs")
-                .short('l')
-                .long("libs")
-                .value_name("libs config file")
-                .help("a toml file contains all dependency libs")
-                .takes_value(true)
-                .required(false),
-        )
-        .arg(
-            Arg::with_name("sample")
-                .long("sample")
-                .value_name("sample mode")
-                .help("run as sample mode, to see the format of config files")
-                .takes_value(false)
-                .required(false),
-        )
-        .get_matches();
-
-    // parse command args
-    let runargs = parse_args(&matches);
+    let matches: ArgMatches = init_command_line();
+    let run_args = parse_args(&matches);
 
     // setting log level
     unsafe {
-        std::env::set_var("RUST_LOG", runargs.log_lvl);
+        std::env::set_var("RUST_LOG", run_args.log_lvl);
     }
     env_logger::init();
 
     // loading libraries
-    let mut libparser: LibParse = LibParse::new();
-    let libpath: std::path::PathBuf = std::env::current_dir()?
+    let lib_cfg_path: std::path::PathBuf = std::env::current_dir()
+        .unwrap()
         .canonicalize()
-        .expect(&format!(
-            "failed to get absolute path of {}",
-            &runargs.libscfg
-        ))
-        .join(&runargs.libscfg);
+        .unwrap()
+        .join(&run_args.libs_cfg);
 
-    let pathstr = libpath
-        .to_str()
-        .expect(&format!("failed to get path str of {}", &runargs.libscfg));
-
-    libparser
-        .load_config(&pathstr)
-        .expect(&format!("failed to load {}", pathstr));
+    let lib_cfg_path = lib_cfg_path.to_str().unwrap();
+    let lib_parser = LibParse::new(&lib_cfg_path).unwrap();
 
     // checking config file of test cases
-    let config_content: String = fs::read_to_string(&runargs.test_cfg).expect(&format!(
+    let config_content: String = fs::read_to_string(&run_args.test_cfg).expect(&format!(
         "failed to read test case file {}",
-        &runargs.test_cfg
+        &run_args.test_cfg
     ));
-    if config_content.is_empty() {
-        info!("input file {} is empty, do nothing!", runargs.test_cfg);
-        return Ok(());
-    }
 
     // loading test cases
-    let config: Config = toml::from_str(&config_content).expect(&format!(
-        "cannot parse the test case config, , content is {}",
-        config_content
-    ));
+    let config: Config = match toml::from_str(&config_content) {
+        Ok(t) => t,
+        _ => {
+            return Err(format!(
+                "cannot parse the test case config [{}], invalid toml format?",
+                &run_args.test_cfg,
+            )
+            .into())
+        }
+    };
+
     if config.tests.is_empty() {
         info!("no test cases be find, do nothing!");
         return Ok(());
@@ -164,7 +161,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         info!("Starting run test case: {}", test.name);
         let mut succ = true;
         for cmd in test.cmds {
-            let ret: i32 = libparser.call_func(&cmd.opfunc, &cmd.args);
+            let ret: i32 = match lib_parser.call_func(&cmd.opfunc, &cmd.args) {
+                Ok(v) => v,
+                Err(e) => {
+                    error!("run {} failed,Error:\n{:?}", test.name, e);
+                    break;
+                }
+            };
             if ret != cmd.expect_res {
                 error!(
                     "run cmd {} Failed: [expect_res={}, res={}]",
