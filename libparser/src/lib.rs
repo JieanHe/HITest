@@ -91,28 +91,25 @@ impl LibParse {
             .map_err(|_| LibError(format!("failed to parse TOML config file {}", config)))?;
 
         for lib_file in config.libs {
-            let lib = unsafe {
-                Library::new(lib_file.path.clone()).map_err(|e| {
-                    LibError(format!(
-                        "failed to load library file {}: {}",
-                        lib_file.path, e
-                    ))
-                })?
-            };
+            let lib = unsafe { Library::new(lib_file.path.clone()) }.map_err(|e| {
+                LibError(format!(
+                    "failed to load library file {}: {}",
+                    lib_file.path, e
+                ))
+            })?;
 
             let lib_arc = Arc::new(lib);
             libs.push(lib_arc.clone());
             for func in lib_file.funcs {
                 let func_name = func.name;
                 let c_func_name = CString::new(func_name.clone())?;
-                let func_ptr: Symbol<FnPtr> = unsafe {
-                    lib_arc.get(c_func_name.as_bytes()).map_err(|_| {
+                let func_ptr: Symbol<FnPtr> = unsafe { lib_arc.get(c_func_name.as_bytes()) }
+                    .map_err(|_| {
                         LibError(format!(
                             "failed to get function {} form library {}",
                             func_name, lib_file.path
                         ))
-                    })?
-                };
+                    })?;
                 let func_attr = FnAttr::new(*func_ptr, func.paras);
                 funcs.insert(func_name, Arc::new(Box::new(func_attr)));
             }

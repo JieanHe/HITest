@@ -1,5 +1,5 @@
-use std::{env, fs::File, io::Write, path::Path};
 use libparser::compile_lib;
+use std::{env, fs::File, io::Write, path::Path};
 
 pub fn prepare_sample_files() -> (String, String) {
     let binding = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
@@ -9,7 +9,7 @@ pub fn prepare_sample_files() -> (String, String) {
         .join("sample")
         .join("libmalloc.c");
     compile_lib(libmalloc);
-    
+
     const SAMPLE_LIB_CFG: &str = "./sample/dependlibs.toml";
     const SAMPLE_TEST_CFG: &str = "./sample/tc_libmalloc.toml";
 
