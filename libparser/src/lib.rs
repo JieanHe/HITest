@@ -62,7 +62,6 @@ impl FnAttr {
     }
 }
 
-// 引入生命周期参数 'a
 pub struct LibParse {
     libs: Vec<Arc<Library>>,
     funcs: HashMap<String, Arc<Box<FnAttr>>>,
@@ -98,9 +97,9 @@ impl LibParse {
         Ok(self)
     }
 
-    pub fn get_func(&self, name: &str) -> Result<Arc<Box<FnAttr>>, Box<dyn Error>> {
+    fn get_func(&self, name: &str) -> Result<Arc<Box<FnAttr>>, Box<dyn Error>> {
         match self.funcs.get(name) {
-            Some(arc_box_func_attr) => Ok(arc_box_func_attr.clone()), // 直接返回 Arc 的克隆
+            Some(arc_box_func_attr) => Ok(arc_box_func_attr.clone()),
             None => Err(format!("Function '{}' not found", name).into()),
         }
     }
@@ -158,7 +157,7 @@ pub fn compile_lib(file: PathBuf) {
     let lib_path = file.parent().unwrap().join(file_name.to_owned() + ext);
 
     let compiler = "gcc";
-    // compile library
+
     let status = Command::new(compiler)
         .arg("--shared")
         .arg("-fPIC")
@@ -189,8 +188,7 @@ pub fn compile_lib(file: PathBuf) {
 mod tests {
 
     use super::*;
-    use rand::Rng;
-    use std::{env, fs::File, io::Write}; // 引入 Rng trait，它提供了 next_u32 方法
+    use std::{env, fs::File, io::Write}; 
 
     #[test]
     fn test_libmalloc() {
@@ -206,7 +204,6 @@ mod tests {
             .unwrap()
             .join("../sample/dependlibs.toml");
         let config_path = config_path.to_str().unwrap();
-
         // generate config file
         {
             let config_content = r#"

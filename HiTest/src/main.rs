@@ -164,13 +164,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         info!("Starting run test case: {}", test.name);
         let mut succ = true;
         for cmd in test.cmds {
-            debug!(
-                "Executing cmd: {}{:?}, Expect result: {}",
-                cmd.opfunc, cmd.args, cmd.expect_res
-            );
-
             let ret: i32 = libparser.call_func(&cmd.opfunc, &cmd.args);
-
             if ret != cmd.expect_res {
                 error!(
                     "run cmd {} Failed: [expect_res={}, res={}]",
@@ -179,6 +173,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 succ = false;
                 break;
             }
+            debug!(
+                "Executing cmd: {}{:?}, [expect_res={}, res={}]",
+                cmd.opfunc, cmd.args, cmd.expect_res, ret
+            );
         }
 
         // reporting test conclusion
