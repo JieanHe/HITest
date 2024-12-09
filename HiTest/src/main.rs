@@ -26,15 +26,15 @@ struct Cmd {
 }
 
 #[derive(Debug)]
-struct run_args {
+struct RunArgs {
     test_cfg: String,
     log_lvl: String,
     libs_cfg: String,
 }
 
-impl run_args {
+impl RunArgs {
     pub fn new(test_cfg: String, log_lvl: String, libs_cfg: String) -> Self {
-        run_args {
+        RunArgs {
             test_cfg,
             log_lvl,
             libs_cfg,
@@ -42,7 +42,7 @@ impl run_args {
     }
 }
 
-fn parse_args(matches: &ArgMatches) -> run_args {
+fn parse_args(matches: &ArgMatches) -> RunArgs {
     let test_path: String;
     let libs_path: String;
 
@@ -65,7 +65,7 @@ fn parse_args(matches: &ArgMatches) -> run_args {
     if !valid_lvl.contains(&log_lvl) {
         log_lvl = "info";
     }
-    run_args::new(test_path, log_lvl.to_string(), libs_path)
+    RunArgs::new(test_path, log_lvl.to_string(), libs_path)
 }
 
 fn init_command_line() -> ArgMatches {

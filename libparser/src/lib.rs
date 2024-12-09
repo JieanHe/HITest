@@ -73,8 +73,10 @@ impl FnAttr {
 }
 
 pub struct LibParse {
-    libs: Vec<Arc<Library>>,
     funcs: HashMap<String, Arc<Box<FnAttr>>>,
+
+    #[allow(dead_code)]
+    libs: Vec<Arc<Library>>, // to keep library loaded from file on live, and this field will never be used.
 }
 
 impl LibParse {
@@ -137,13 +139,11 @@ impl LibParse {
         for key in &func_attr.paras {
             let mut succ = false;
             for value in config_params {
-                if let Some(value_key) = value.strip_prefix(key) {
-                    if let Some(index) = value_key.strip_prefix("=") {
-                        if let Ok(num) = index.parse::<i64>() {
-                            params.push(num);
-                            succ = true;
-                            break;
-                        }
+                if let Some(para) = value.strip_prefix(&format!("{}=", key)) {
+                    if let Ok(num) = para.parse::<i64>() {
+                        params.push(num);
+                        succ = true;
+                        break;
                     }
                 }
             }
