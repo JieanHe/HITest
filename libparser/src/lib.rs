@@ -26,6 +26,7 @@ impl Error for LibError {}
 
 #[derive(Deserialize)]
 struct LibConfig {
+    para_len: usize,
     libs: Vec<Lib>,
 }
 
@@ -53,17 +54,13 @@ impl FnAttr {
     }
 
     pub fn run(&self, params: &[c_long]) -> i32 {
-        if params.len() < 8 {
-            panic!("Insufficient parameters provided");
-        }
-
-        unsafe { (self.ptr)(params.as_ptr(), params.len() as c_int) as i32 }
+        (self.ptr)(params.as_ptr(), params.len() as c_int) as i32
     }
 }
 
 pub struct LibParse {
     funcs: HashMap<String, Arc<Box<FnAttr>>>,
-
+    para_len: usize,
     #[allow(dead_code)]
     libs: Vec<Arc<Library>>, // to keep library loaded from file on live, and this field will never be used.
 }
@@ -103,8 +100,12 @@ impl LibParse {
                 funcs.insert(func_name, Arc::new(Box::new(func_attr)));
             }
         }
-
-        Ok(LibParse { libs, funcs })
+        let para_len = config.para_len;
+        Ok(LibParse {
+            libs,
+            para_len,
+            funcs,
+        })
     }
 
     fn get_func(&self, name: &str) -> Result<Arc<Box<FnAttr>>, Box<dyn Error>> {
@@ -119,6 +120,14 @@ impl LibParse {
         func_name: &str,
         config_params: &Vec<String>,
     ) -> Result<i32, Box<dyn Error>> {
+        if config_params.len() > self.para_len {
+            return Err(format!(
+                "invalid params: {:?}, max parameters len is {}",
+                config_params, self.para_len
+            )
+            .into());
+        }
+
         let func_attr = self.get_func(func_name)?;
         let mut params: Vec<c_long> = Vec::new();
 
@@ -142,7 +151,7 @@ impl LibParse {
             }
         }
 
-        params.resize(8, 0);
+        params.resize(self.para_len, 0);
         Ok(func_attr.run(&params).try_into().unwrap())
     }
 }
@@ -216,6 +225,7 @@ mod tests {
         // generate config file
         {
             let config_content = r#"
+para_len = 3           
 [[libs]]
 path = "../sample/libmalloc.dll"
 funcs = [
