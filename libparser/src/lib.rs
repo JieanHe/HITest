@@ -210,12 +210,7 @@ mod tests {
 
     #[test]
     fn test_libmalloc() {
-        let binding = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-        let libmalloc = Path::new(&binding)
-            .parent()
-            .unwrap()
-            .join("sample")
-            .join("libmalloc.c");
+        let libmalloc = env::current_dir().unwrap().join("../sample/libmalloc.c");
         compile_lib(libmalloc);
 
         let config_path = env::current_dir()

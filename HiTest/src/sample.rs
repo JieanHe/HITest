@@ -1,13 +1,8 @@
 use libparser::compile_lib;
-use std::{env, fs::File, io::Write, path::Path};
+use std::{fs::File, io::Write, path::Path};
 
 pub fn prepare_sample_files() -> (String, String) {
-    let binding = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-    let libmalloc = Path::new(&binding)
-        .parent()
-        .unwrap()
-        .join("sample")
-        .join("libmalloc.c");
+    let libmalloc = Path::new("./sample/libmalloc.c").to_path_buf();
     compile_lib(libmalloc);
 
     const SAMPLE_LIB_CFG: &str = "./sample/dependlibs.toml";
