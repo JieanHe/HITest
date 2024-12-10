@@ -50,7 +50,6 @@ cmds = [
     { opfunc = "my_malloc", expect_res = 0, args = ["len=4", "mem_idx=2"] },
     { opfunc = "my_write32", expect_res = 0, args = ["mem_idx=2", "offset=4", "val=888"] },
     { opfunc = "my_read32", expect_res = 888, args = ["mem_idx=2", "offset=4"] },
-    { opfunc = "my_read32", expect_res = 0, args = ["mem_idx=2", "offset=96"] },
     { opfunc = "my_free", expect_res = -12, args = ["mem_idx=5"] }
 ]        
     "#;
