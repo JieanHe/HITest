@@ -8,7 +8,7 @@ use std::{
     error::Error,
     ffi::CString,
     fmt, fs,
-    os::raw::{c_long, c_longlong},
+    os::raw::{c_int, c_long},
     path::{Path, PathBuf},
     process::Command,
     sync::Arc,
@@ -41,16 +41,7 @@ struct Lib {
     funcs: Vec<LibFunc>,
 }
 
-type FnPtr = extern "C" fn(
-    c_longlong,
-    c_longlong,
-    c_longlong,
-    c_longlong,
-    c_longlong,
-    c_longlong,
-    c_longlong,
-    c_longlong,
-) -> c_long;
+type FnPtr = extern "C" fn(*const c_long, c_int) -> c_int;
 
 struct FnAttr {
     ptr: FnPtr,
@@ -61,14 +52,12 @@ impl FnAttr {
         FnAttr { ptr, paras }
     }
 
-    pub fn run(&self, params: &[c_longlong]) -> i32 {
+    pub fn run(&self, params: &[c_long]) -> i32 {
         if params.len() < 8 {
             panic!("Insufficient parameters provided");
         }
 
-        (self.ptr)(
-            params[0], params[1], params[2], params[3], params[4], params[5], params[6], params[7],
-        )
+        unsafe { (self.ptr)(params.as_ptr(), params.len() as c_int) as i32 }
     }
 }
 
@@ -131,13 +120,13 @@ impl LibParse {
         config_params: &Vec<String>,
     ) -> Result<i32, Box<dyn Error>> {
         let func_attr = self.get_func(func_name)?;
-        let mut params: Vec<i64> = Vec::new();
+        let mut params: Vec<c_long> = Vec::new();
 
         for key in &func_attr.paras {
             let mut succ = false;
             for value in config_params {
                 if let Some(para) = value.strip_prefix(&format!("{}=", key)) {
-                    if let Ok(num) = para.parse::<i64>() {
+                    if let Ok(num) = para.parse::<c_long>() {
                         params.push(num);
                         succ = true;
                         break;

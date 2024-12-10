@@ -11,32 +11,32 @@
 #define EXTRACT_BASE_FILE(file) (strrchr(file, '/') ? strrchr(file, '/') + 1 : file)
 #endif
 
-
-
 #define MAX_ARR_LEN 100
-#define IDX_CHECK(idx)                                                                                                    \
+#define IDX_CHECK(idx)                                                                                                                          \
+    do                                                                                                                                          \
+    {                                                                                                                                           \
+        if (idx >= MAX_ARR_LEN)                                                                                                                 \
+        {                                                                                                                                       \
+            printf("[%s : line %d]  ERROR: out_idx %ld is bigger than max idx %ld\n", EXTRACT_BASE_FILE(__FILE__), __LINE__, idx, MAX_ARR_LEN); \
+            return -12;                                                                                                                         \
+        }                                                                                                                                       \
+    } while (0)
+
+#define MEM_CHECK(idx)                                                                                                    \
     do                                                                                                                    \
     {                                                                                                                     \
-        if (idx >= MAX_ARR_LEN)                                                                                           \
+        if (ADDR_ARR[idx] == 0)                                                                                           \
         {                                                                                                                 \
-            printf("[%s : line %d]  ERROR: out_idx %ld is bigger than max idx %ld\n", EXTRACT_BASE_FILE(__FILE__), __LINE__, idx, MAX_ARR_LEN); \
+            printf("[%s : line %d]  ERROR: out_idx %ld get NULL address!\n", EXTRACT_BASE_FILE(__FILE__), __LINE__, idx); \
             return -12;                                                                                                   \
         }                                                                                                                 \
     } while (0)
-
-#define MEM_CHECK(idx)                                                                              \
-    do                                                                                              \
-    {                                                                                               \
-        if (ADDR_ARR[idx] == 0)                                                                     \
-        {                                                                                           \
-            printf("[%s : line %d]  ERROR: out_idx %ld get NULL address!\n", EXTRACT_BASE_FILE(__FILE__), __LINE__, idx); \
-            return -12;                                                                             \
-        }                                                                                           \
-    } while (0)
 static uint64_t ADDR_ARR[MAX_ARR_LEN] = {0};
 
-EXPORT int my_malloc(int64_t len, int64_t out_idx, int64_t p2, int64_t p3, int64_t p4, int64_t p5, int64_t p6, int64_t p7)
+EXPORT int my_malloc(const long *params, int params_len)
 {
+    long len = params[0];
+    long out_idx = params[1];
     IDX_CHECK(out_idx);
     void *addr = malloc(len);
     if (!addr)
@@ -46,35 +46,39 @@ EXPORT int my_malloc(int64_t len, int64_t out_idx, int64_t p2, int64_t p3, int64
     return 0;
 }
 
-EXPORT int my_free(int64_t in_idx, int64_t offset, int64_t p2, int64_t p3, int64_t p4, int64_t p5, int64_t p6, int64_t p7)
+EXPORT int my_free(const long *params, int params_len)
 {
+    long in_idx = params[0];
     IDX_CHECK(in_idx);
     if (ADDR_ARR[in_idx] == 0)
     {
-        printf("[%s : line %d] invalid input idx %d\n", EXTRACT_BASE_FILE(__FILE__), __LINE__,  in_idx);
+        printf("invalid input idx %d\n", in_idx);
         return -12;
     }
 
     free((void *)ADDR_ARR[in_idx]);
-
     ADDR_ARR[in_idx] = 0;
     return 0;
 }
 
-EXPORT int my_read32(int64_t in_idx, int64_t offset, int64_t p2, int64_t p3, int64_t p4, int64_t p5, int64_t p6, int64_t p7)
+EXPORT int my_read32(const long *params, int params_len)
 {
+    long in_idx = params[0];
+    long offset = params[1];
     IDX_CHECK(in_idx);
     MEM_CHECK(in_idx);
 
-    uint64_t addr = (uint64_t)ADDR_ARR[in_idx] + offset;
-    return *(int *)addr;
+    return *(int *)(ADDR_ARR[in_idx] + offset);
 }
 
-EXPORT int my_write32(int64_t in_idx, int64_t offset, int64_t val, int64_t p3, int64_t p4, int64_t p5, int64_t p6, int64_t p7)
+EXPORT int my_write32(const long *params, int params_len)
 {
+    long in_idx = params[0];
+    long offset = params[1];
+    long val = params[2];
+
     IDX_CHECK(in_idx);
     MEM_CHECK(in_idx);
-    uint64_t addr = (uint64_t)ADDR_ARR[in_idx] + offset;
-    *(int *)addr = val;
+    *(int *)(ADDR_ARR[in_idx] + offset) = val;
     return 0;
 }
