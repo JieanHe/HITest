@@ -4,7 +4,6 @@ use toml;
 
 use std::{
     collections::HashMap,
-    env,
     error::Error,
     ffi::CString,
     fmt, fs,
@@ -163,17 +162,16 @@ pub fn compile_lib(file: PathBuf) {
         .to_str()
         .and_then(|s| s.split('.').next())
         .unwrap();
-    let ext = if env::var("TARGET")
-        .unwrap_or("windows".to_string())
-        .contains("windows")
-    {
-        ".dll"
-    } else {
-        ".so"
-    };
 
-    let lib_path = file.parent().unwrap().join(file_name.to_owned() + ext);
-
+        let target = if cfg!(unix) {
+            format!("{}.so", file_name)
+        } else if cfg!(windows) {
+            format!("{}.dll", file_name)
+        } else {
+            panic!("Unsupported platform");
+        };
+        let target = file.parent().unwrap().join(target);
+    
     let compiler = "gcc";
 
     let status = Command::new(compiler)
@@ -181,13 +179,14 @@ pub fn compile_lib(file: PathBuf) {
         .arg("-fPIC")
         .arg(file)
         .arg("-o")
-        .arg(&lib_path)
+        .arg(&target)
         .status();
+
 
     match status {
         Ok(exit_status) => {
             if exit_status.success() {
-                if Path::new(&lib_path).exists() {
+                if Path::new(&target).exists() {
                     println!("Library file was created successfully.");
                 } else {
                     println!("Library file was not created.");
@@ -219,6 +218,7 @@ mod tests {
         let config_path = config_path.to_str().unwrap();
         // generate config file
         {
+            #[cfg(windows)]
             let config_content = r#"
 para_len = 3           
 [[libs]]
@@ -230,6 +230,18 @@ funcs = [
     { name = "my_write32", paras = ["mem_idx", "offset", "val"] }
 ]
 "#;
+            #[cfg(unix)]
+            let config_content = r#"
+para_len = 3           
+[[libs]]
+path = "../sample/libmalloc.so"
+funcs = [
+{ name = "my_malloc", paras = ["len", "mem_idx"] },
+{ name = "my_free", paras = ["mem_idx"] },
+{ name = "my_read32", paras = ["mem_idx", "offset"] },
+{ name = "my_write32", paras = ["mem_idx", "offset", "val"] }
+]
+            "#;
             let mut file = File::create(config_path).unwrap();
             let _ = file.write_all(config_content.as_bytes());
         }

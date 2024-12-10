@@ -10,6 +10,7 @@ pub fn prepare_sample_files() -> (String, String) {
 
     {
         // write libs config
+        #[cfg(windows)]
         let config_content = r#"
 para_len = 3  # The default parameter length is 8, 
   # which can be modified according to the actual situation of the lib, 
@@ -29,6 +30,26 @@ funcs = [
 # path = "./other_dir/another_lib.dll"
 # funcs = [...]
     "#;
+    #[cfg(unix)]
+    let config_content = r#"
+para_len = 3  # The default parameter length is 8, 
+# which can be modified according to the actual situation of the lib, 
+# but the length of all functions must not exceed this value.
+
+[[libs]]
+path = "./sample/libmalloc.so"
+funcs = [
+{ name = "my_malloc", paras = ["len", "mem_idx"] },
+{ name = "my_free", paras = ["mem_idx"] },
+{ name = "my_read32", paras = ["mem_idx", "offset"] },
+{ name = "my_write32", paras = ["mem_idx", "offset", "val"] }
+]
+
+# If there are more libs, you can continue to add them as follows:
+# [[libs]]
+# path = "./other_dir/another_lib.so"
+# funcs = [...]
+"#;
         let mut file = File::create(SAMPLE_LIB_CFG).unwrap();
         let _ = file.write_all(config_content.as_bytes());
     }
