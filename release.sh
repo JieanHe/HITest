@@ -16,9 +16,9 @@ cp sample/libmalloc.c temp/sample/libmalloc.c
 cp target/release/hitest.exe temp/
 
 # Create a tar.gz package
-tar -czf hitest_package.tar.gz -C temp .
+tar -czf target/hitest.tar.gz -C temp .
 
 # Clean up the temporary directory
 rm -rf temp
 
-echo "Successfully created hitest_package.tar.gz"
+echo "Successfully created target/hitest.tar.gz"
