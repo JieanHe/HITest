@@ -4,6 +4,8 @@
 hitest是一个通用的读配置文件调接口校验返回值的工具, 可用于SDK库、以及驱动程序的测试等。配置文件为toml格式，需两个配置文件（通过命令行参数提供）：
 1. -l libs.toml: 指定库文件的路径和提供的所有函数。
 2. -t test_case.toml: 指定接口调用的顺序和参数。
+按顺序使用test_case.toml指定的参数和接口调用lib提供的接口并校验返回值。
+
 **注意** 接口全部为 `int (*func)(const long *params, int para_len);`的形式, 需要在libs.toml中指定parameter_len的最大长度(即所有库文件提供的所有函数中，parameters数组的最大长度，且library需保证每一个函数不会使用超过该长度的内存，否则会panic)**（例如： 当指定para_len=6时，库中的函数使用了params[6]则会panic）**
 
 #### 库
