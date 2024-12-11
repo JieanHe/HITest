@@ -43,17 +43,53 @@ struct Lib {
 
 type FnPtr = extern "C" fn(*const c_long, c_int) -> c_int;
 
-struct FnAttr {
+pub struct FnAttr {
     ptr: FnPtr,
     paras: Vec<String>,
 }
+
 impl FnAttr {
-    pub fn new(ptr: FnPtr, paras: Vec<String>) -> Self {
+    fn new(ptr: FnPtr, paras: Vec<String>) -> Self {
         FnAttr { ptr, paras }
     }
 
-    pub fn run(&self, params: &[c_long]) -> i32 {
+    fn run(&self, params: &[c_long]) -> i32 {
         (self.ptr)(params.as_ptr(), params.len() as c_int) as i32
+    }
+
+    pub fn parse_params(&self, config_params: &Vec<String>) -> Result<Vec<c_long>, Box<dyn Error>> {
+        if config_params.len() != self.paras.len() {
+            return Err(format!(
+                "params size mismatch: expect params contains {} element, but got {}",
+                self.paras.len(),
+                config_params.len()
+            )
+            .into());
+        }
+
+        let mut params: Vec<c_long> = Vec::new();
+
+        for key in self.paras.clone() {
+            let mut succ = false;
+            for value in config_params {
+                if let Some(para) = value.strip_prefix(&format!("{}=", key)) {
+                    if let Ok(num) = para.parse::<c_long>() {
+                        params.push(num);
+                        succ = true;
+                        break;
+                    }
+                }
+            }
+            if !succ {
+                return Err(format!(
+                    "failed to get param [{}], all candidate params are {:?}",
+                    key, config_params
+                )
+                .into());
+            }
+        }
+
+        Ok(params)
     }
 }
 
@@ -107,7 +143,7 @@ impl LibParse {
         })
     }
 
-    fn get_func(&self, name: &str) -> Result<Arc<Box<FnAttr>>, Box<dyn Error>> {
+    pub fn get_func(&self, name: &str) -> Result<Arc<Box<FnAttr>>, Box<dyn Error>> {
         match self.funcs.get(name) {
             Some(arc_box_func_attr) => Ok(arc_box_func_attr.clone()),
             None => Err(format!("Function '{}' not found", name).into()),
@@ -119,39 +155,21 @@ impl LibParse {
         func_name: &str,
         config_params: &Vec<String>,
     ) -> Result<i32, Box<dyn Error>> {
-        if config_params.len() > self.para_len {
-            return Err(format!(
-                "invalid params: {:?}, max parameters len is {}",
-                config_params, self.para_len
-            )
-            .into());
-        }
-
         let func_attr = self.get_func(func_name)?;
-        let mut params: Vec<c_long> = Vec::new();
-
-        for key in &func_attr.paras {
-            let mut succ = false;
-            for value in config_params {
-                if let Some(para) = value.strip_prefix(&format!("{}=", key)) {
-                    if let Ok(num) = para.parse::<c_long>() {
-                        params.push(num);
-                        succ = true;
-                        break;
-                    }
-                }
-            }
-            if !succ {
-                return Err(format!(
-                    "failed to get param [{}] of function [{}], all params in test case is {:?}",
-                    key, func_name, config_params
-                )
-                .into());
-            }
-        }
-
+        let mut params: Vec<c_long> = func_attr.parse_params(config_params)?;
         params.resize(self.para_len, 0);
         Ok(func_attr.run(&params).try_into().unwrap())
+    }
+
+    pub fn call_func_attr(
+        &self,
+        fn_attr: &FnAttr,
+        config_params: &Vec<c_long>,
+    ) -> Result<i32, Box<dyn Error>> {
+        let mut params: Vec<c_long> = config_params.clone();
+        params.resize(self.para_len, 0);
+
+        Ok(fn_attr.run(&params).try_into().unwrap())
     }
 }
 
@@ -163,15 +181,15 @@ pub fn compile_lib(file: PathBuf) {
         .and_then(|s| s.split('.').next())
         .unwrap();
 
-        let target = if cfg!(unix) {
-            format!("{}.so", file_name)
-        } else if cfg!(windows) {
-            format!("{}.dll", file_name)
-        } else {
-            panic!("Unsupported platform");
-        };
-        let target = file.parent().unwrap().join(target);
-    
+    let target = if cfg!(unix) {
+        format!("{}.so", file_name)
+    } else if cfg!(windows) {
+        format!("{}.dll", file_name)
+    } else {
+        panic!("Unsupported platform");
+    };
+    let target = file.parent().unwrap().join(target);
+
     let compiler = "gcc";
 
     let status = Command::new(compiler)
@@ -181,7 +199,6 @@ pub fn compile_lib(file: PathBuf) {
         .arg("-o")
         .arg(&target)
         .status();
-
 
     match status {
         Ok(exit_status) => {
