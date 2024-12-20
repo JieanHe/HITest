@@ -253,10 +253,10 @@ para_len = 3
 [[libs]]
 path = "../sample/libmalloc.so"
 funcs = [
-{ name = "my_malloc", paras = ["len", "mem_idx"] },
-{ name = "my_free", paras = ["mem_idx"] },
-{ name = "my_read32", paras = ["mem_idx", "offset"] },
-{ name = "my_write32", paras = ["mem_idx", "offset", "val"] }
+    { name = "my_malloc", paras = ["len", "mem_idx"] },
+    { name = "my_free", paras = ["mem_idx"] },
+    { name = "my_read32", paras = ["mem_idx", "offset"] },
+    { name = "my_write32", paras = ["mem_idx", "offset", "val"] }
 ]
             "#;
             let mut file = File::create(config_path).unwrap();
