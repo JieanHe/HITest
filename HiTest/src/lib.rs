@@ -46,7 +46,7 @@ impl Config {
 
             // reporting test conclusion
             if test.run(lib_parser) {
-                info!("run test case {} successed!\n", test.name);
+                info!("run test case {} succeeded!\n", test.name);
             } else {
                 error!("run test case {} failed!\n", test.name);
             }
@@ -60,19 +60,19 @@ impl Test {
             let fn_attr = match lib_parser.get_func(&cmd.opfunc) {
                 Ok(v) => v,
                 Err(e) => {
-                    error!("Error:{:?}\n execute function {} failed!", e, &cmd.opfunc);
+                    error!("Error:{:?}\n execute cmd {} failed!", e, &cmd.opfunc);
                     return false;
                 }
             };
             let paras = match fn_attr.parse_params(&cmd.args) {
                 Ok(v) => v,
                 Err(e) => {
-                    error!("Error:{:?}\n execute function {} failed!", e, &cmd.opfunc);
+                    error!("Error:{:?}\n execute cmd {} failed!", e, &cmd.opfunc);
                     return false;
                 }
             };
             if let Err(e) = cmd.run(&lib_parser, &fn_attr, &paras) {
-                error!("Error:{:?}\n execute function {} failed!", e, &cmd.opfunc);
+                error!("Error:{:?}\n execute cmd {} failed!", e, &cmd.opfunc);
                 return false;
             }
         }
@@ -82,7 +82,7 @@ impl Test {
 
     fn run(&self, lib_parser: &LibParse) -> bool {
         if self.thread_num == 1 {
-            return self.run_one_thread(lib_parser)
+            return self.run_one_thread(lib_parser);
         }
 
         let results: Vec<_> = (0..self.thread_num)
@@ -96,43 +96,85 @@ impl Test {
             self.name, self.thread_num, count
         );
 
-        count as i32 == self.thread_num
+        let succ = count as i32 == self.thread_num;
+        if succ {
+            info!(
+                "run test case {} with {} thread, all passed!",
+                self.name, self.thread_num
+            );
+        } else {
+            error!(
+                "run test case {} with {} thread, {} passed!",
+                self.name, self.thread_num, count
+            );
+        }
+        succ
     }
 }
 
 impl Cmd {
+    fn run_one_thread(
+        &self,
+        lib_parser: &LibParse,
+        fn_attr: &FnAttr,
+        paras: &Vec<c_long>,
+    ) -> Result<bool, Box<dyn Error>> {
+        let ret = match lib_parser.call_func_attr(fn_attr, paras) {
+            Ok(r) => r,
+            Err(e) => return Err(e),
+        };
+        if ret != self.expect_res {
+            error!(
+                "execute cmd: {}{:?}, expect return: {}, actual: {}",
+                self.opfunc, self.args, self.expect_res, ret
+            );
+        } else {
+            debug!(
+                "execute cmd: {}{:?} succeeded, expect return: {}, actual: {}",
+                self.opfunc, self.args, self.expect_res, ret
+            );
+        }
+
+        Ok(ret == self.expect_res)
+    }
+
     pub fn run(
         &self,
         lib_parser: &LibParse,
         fn_attr: &FnAttr,
         paras: &Vec<c_long>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<bool, Box<dyn Error>> {
+        if self.thread_num == 1 {
+            return self.run_one_thread(lib_parser, fn_attr, paras);
+        }
+
         let results: Vec<_> = (0..self.thread_num)
             .into_par_iter() // rayon parallel
             .map(|_| {
-                let params = paras.clone();
-                let ret = match lib_parser.call_func_attr(fn_attr, &params) {
-                    Ok(r) => r,
-                    Err(_) => self.expect_res - 1,
-                };
-                ret != self.expect_res
+                self.run_one_thread(lib_parser, fn_attr, paras)
+                    .unwrap_or(false)
             })
             .collect();
 
-        // calculate failed thread number
+        // calculate successful thread number
         let count = results.into_iter().filter(|&x| x).count();
         debug!(
-            "excute cmd: {}{:?} with {} thread, {} thread passed!",
-            self.opfunc, self.args, self.thread_num, self.thread_num
+            "execute cmd: {}{:?} with {} thread, {} thread passed!",
+            self.opfunc, self.args, self.thread_num, count
         );
 
-        if count != 0 {
+        let succ = count as i32 == self.thread_num;
+        if succ {
+            info!(
+                "execute cmd: {}{:?} with {} thread, all passed!",
+                self.opfunc, self.args, self.thread_num
+            );
+        } else {
             error!(
-                "parallel execute cmd: {} with {} threads, {} threads failed!",
-                self.opfunc, self.thread_num, count
+                "execute cmd: {}{:?} with {} thread, {} thread passed!",
+                self.opfunc, self.args, self.thread_num, count
             );
         }
-
-        Ok(())
+        Ok(succ)
     }
 }
