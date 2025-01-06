@@ -60,19 +60,19 @@ impl Test {
             let fn_attr = match lib_parser.get_func(&cmd.opfunc) {
                 Ok(v) => v,
                 Err(e) => {
-                    error!("Error:{:?}\n execute cmd {} failed!", e, &cmd.opfunc);
+                    error!("execute cmd {} failed! Error:{:?}\n", &cmd.opfunc, e);
                     return false;
                 }
             };
             let paras = match fn_attr.parse_params(&cmd.args) {
                 Ok(v) => v,
                 Err(e) => {
-                    error!("Error:{:?}\n execute cmd {} failed!", e, &cmd.opfunc);
+                    error!("execute cmd {} failed! Error:{:?}\n", &cmd.opfunc, e);
                     return false;
                 }
             };
             if let Err(e) = cmd.run(&lib_parser, &fn_attr, &paras) {
-                error!("Error:{:?}\n execute cmd {} failed!", e, &cmd.opfunc);
+                error!("execute cmd {} failed! Error:{:?}\n", &cmd.opfunc, e);
                 return false;
             }
         }
