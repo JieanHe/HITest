@@ -26,8 +26,6 @@ struct Cmd {
     opfunc: String,
     expect_res: i32,
     args: Vec<String>,
-    #[serde(default = "default_one")]
-    thread_num: i32,
 }
 
 impl Config {
@@ -113,7 +111,7 @@ impl Test {
 }
 
 impl Cmd {
-    fn run_one_thread(
+    pub fn run(
         &self,
         lib_parser: &LibParse,
         fn_attr: &FnAttr,
@@ -136,45 +134,5 @@ impl Cmd {
         }
 
         Ok(ret == self.expect_res)
-    }
-
-    pub fn run(
-        &self,
-        lib_parser: &LibParse,
-        fn_attr: &FnAttr,
-        paras: &Vec<c_long>,
-    ) -> Result<bool, Box<dyn Error>> {
-        if self.thread_num == 1 {
-            return self.run_one_thread(lib_parser, fn_attr, paras);
-        }
-
-        let results: Vec<_> = (0..self.thread_num)
-            .into_par_iter() // rayon parallel
-            .map(|_| {
-                self.run_one_thread(lib_parser, fn_attr, paras)
-                    .unwrap_or(false)
-            })
-            .collect();
-
-        // calculate successful thread number
-        let count = results.into_iter().filter(|&x| x).count();
-        debug!(
-            "execute cmd: {}{:?} with {} thread, {} thread passed!",
-            self.opfunc, self.args, self.thread_num, count
-        );
-
-        let succ = count as i32 == self.thread_num;
-        if succ {
-            info!(
-                "execute cmd: {}{:?} with {} thread, all passed!",
-                self.opfunc, self.args, self.thread_num
-            );
-        } else {
-            error!(
-                "execute cmd: {}{:?} with {} thread, {} thread passed!",
-                self.opfunc, self.args, self.thread_num, count
-            );
-        }
-        Ok(succ)
     }
 }
