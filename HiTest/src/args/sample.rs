@@ -12,8 +12,8 @@ pub fn prepare_sample_files() -> (String, String) {
         // write libs config
         #[cfg(windows)]
         let config_content = r#"
-para_len = 3  # The default parameter length is 8, 
-  # which can be modified according to the actual situation of the lib, 
+para_len = 3  # The default parameter length is 8,
+  # which can be modified according to the actual situation of the lib,
   # but the length of all functions must not exceed this value.
 
 [[libs]]
@@ -32,8 +32,8 @@ funcs = [
     "#;
     #[cfg(unix)]
     let config_content = r#"
-para_len = 3  # The default parameter length is 8, 
-# which can be modified according to the actual situation of the lib, 
+para_len = 3  # The default parameter length is 8,
+# which can be modified according to the actual situation of the lib,
 # but the length of all functions must not exceed this value.
 
 [[libs]]
@@ -58,6 +58,7 @@ funcs = [
         let test_case = r#"
 [[tests]]
 name = "Test_Case_1"
+thread_num=2
 cmds = [
     { opfunc = "my_malloc", expect_res = 0, args = ["len=4", "mem_idx=1"] },
     { opfunc = "my_write32", expect_res = 0, args = ["mem_idx=1", "offset=0", "val=888"] },
@@ -67,12 +68,13 @@ cmds = [
 
 [[tests]]
 name = "Test_Case_2"
+thread_num=4
 cmds = [
     { opfunc = "my_malloc", expect_res = 0, args = ["len=4", "mem_idx=2"] },
     { opfunc = "my_write32", expect_res = 0, args = ["mem_idx=2", "offset=4", "val=888"] },
     { opfunc = "my_read32", expect_res = 888, args = ["mem_idx=2", "offset=4"] },
     { opfunc = "my_free", expect_res = -12, args = ["mem_idx=5"] }
-]        
+]
     "#;
         let mut file = File::create(SAMPLE_TEST_CFG).unwrap();
         let _ = file.write_all(test_case.as_bytes());
