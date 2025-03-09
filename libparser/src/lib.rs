@@ -1,8 +1,7 @@
 use libloading::{Library, Symbol};
 use serde::Deserialize;
-use toml;
-
 use std::{
+    cell::RefCell,
     collections::HashMap,
     error::Error,
     ffi::CString,
@@ -12,6 +11,7 @@ use std::{
     process::Command,
     sync::Arc,
 };
+use toml;
 
 #[derive(Debug)]
 struct LibError(String);
@@ -41,20 +41,33 @@ struct Lib {
     funcs: Vec<LibFunc>,
 }
 
-type FnPtr = extern "C" fn(*const c_long, c_int) -> c_int;
+type AddressArray = [u64; 512];
+thread_local! {
+    static TLS_PAGE: RefCell<AddressArray> = RefCell::new([0; 512]);
+}
+
+//  4k bytes buffer for api communication, buffer of parameters, number of parameters, and buffer of return value.
+type FnPtr = extern "C" fn(
+    *mut u64, // uint64_t* param_page
+    *const c_long, // const long* params
+    c_int,         // int params_len
+) -> c_int;
 
 pub struct FnAttr {
-    ptr: FnPtr,
+    fnptr: FnPtr,
     paras: Vec<String>,
 }
 
 impl FnAttr {
-    fn new(ptr: FnPtr, paras: Vec<String>) -> Self {
-        FnAttr { ptr, paras }
+    fn new(fnptr: FnPtr, paras: Vec<String>) -> Self {
+        FnAttr { fnptr, paras }
     }
 
     fn run(&self, params: &[c_long]) -> i32 {
-        (self.ptr)(params.as_ptr(), params.len() as c_int) as i32
+        TLS_PAGE.with(|addr| {
+            let mut addr = addr.borrow_mut();
+            unsafe { (self.fnptr)(addr.as_mut_ptr(), params.as_ptr(), params.len() as c_int) }
+        })
     }
 
     pub fn parse_params(&self, config_params: &Vec<String>) -> Result<Vec<c_long>, Box<dyn Error>> {
@@ -237,7 +250,7 @@ mod tests {
         {
             #[cfg(windows)]
             let config_content = r#"
-para_len = 3           
+para_len = 3
 [[libs]]
 path = "../sample/libmalloc.dll"
 funcs = [
@@ -249,7 +262,7 @@ funcs = [
 "#;
             #[cfg(unix)]
             let config_content = r#"
-para_len = 3           
+para_len = 3
 [[libs]]
 path = "../sample/libmalloc.so"
 funcs = [
