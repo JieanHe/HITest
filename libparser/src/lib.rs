@@ -48,7 +48,7 @@ thread_local! {
 
 //  4k bytes buffer for api communication, buffer of parameters, number of parameters, and buffer of return value.
 type FnPtr = extern "C" fn(
-    *mut u64, // uint64_t* param_page
+    *mut u64,      // uint64_t* param_page
     *const c_long, // const long* params
     c_int,         // int params_len
 ) -> c_int;
@@ -66,7 +66,7 @@ impl FnAttr {
     fn run(&self, params: &[c_long]) -> i32 {
         TLS_PAGE.with(|addr| {
             let mut addr = addr.borrow_mut();
-            unsafe { (self.fnptr)(addr.as_mut_ptr(), params.as_ptr(), params.len() as c_int) }
+            (self.fnptr)(addr.as_mut_ptr(), params.as_ptr(), params.len() as c_int) as i32
         })
     }
 
