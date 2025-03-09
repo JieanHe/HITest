@@ -54,6 +54,7 @@ impl Config {
 
 impl Test {
     fn run_one_thread(&self, lib_parser: &LibParse) -> bool {
+        let mut res = true;
         for cmd in self.cmds.clone() {
             let fn_attr = match lib_parser.get_func(&cmd.opfunc) {
                 Ok(v) => v,
@@ -69,13 +70,21 @@ impl Test {
                     return false;
                 }
             };
-            if let Err(e) = cmd.run(&lib_parser, &fn_attr, &paras) {
-                error!("execute cmd {} failed! Error:{:?}\n", &cmd.opfunc, e);
-                return false;
+
+            match cmd.run(&lib_parser, &fn_attr, &paras) {
+                Ok(v) => {
+                    if!v {
+                        res = false;
+                    }
+                },
+                Err(e) => {
+                    error!("execute cmd {} failed! Error:{:?}\n", &cmd.opfunc, e);
+                    return false;
+                }
             }
         }
 
-        return true;
+        res
     }
 
     fn run(&self, lib_parser: &LibParse) -> bool {
@@ -87,7 +96,7 @@ impl Test {
             .into_par_iter() // rayon parallel
             .map(|_| self.run_one_thread(lib_parser))
             .collect();
-
+        debug!("results: {:#?}", results);
         let count = results.into_iter().filter(|&x| x).count();
         debug!(
             "run test case {} with {} thread, {} passed!",
