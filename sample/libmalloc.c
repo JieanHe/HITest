@@ -110,19 +110,15 @@ EXPORT int my_memcpy(uint64_t *param_page, const uint64_t *params, int params_le
 {
     const static int used_len = 3; // this function need 3 input
     LEN_CHECK(used_len, params_len);
-    uint64_t in_idx = params[0];
-    uint64_t out_idx = params[1];
+    uint64_t in_srcidx = params[0];
+    uint64_t in_dstidx = params[1];
     uint64_t len = params[2];
-    IDX_CHECK(in_idx);
-    uint64_t len = params[2];
-    IDX_CHECK(in_idx);
-    MEM_CHECK(in_idx);
-    void *dst = malloc(len);
-    if (!dst)
-        return -22;
 
-    memcpy(dst, (void *)(get_param(param_page, in_idx) ), len);
-    set_param(param_page, out_idx, (uint64_t)dst);
+    IDX_CHECK(in_srcidx);
+    IDX_CHECK(in_dstidx);
+
+    memcpy((void *)(get_param(param_page, in_dstidx) ), (void *)(get_param(param_page, in_srcidx) ), len);
+
     return 0;
 }
 
@@ -131,10 +127,9 @@ EXPORT int my_strlen(uint64_t *param_page, const uint64_t *params, int params_le
     const static int used_len = 2; // this function need 1 input
     LEN_CHECK(used_len, params_len);
     uint64_t in_idx = params[0];
-    uint64_t out_idx = params[1];
 
     IDX_CHECK(in_idx);
-    IDX_CHECK(out_idx);
+
     return strlen((void *)(get_param(param_page, in_idx) ));
 }
 
@@ -142,13 +137,27 @@ EXPORT int my_strcmp(uint64_t *param_page, const uint64_t *params, int params_le
 {
     const static int used_len = 2; // this function need 2 input
     LEN_CHECK(used_len, params_len);
-    uint64_t in_idx = params[0];
+    uint64_t in_idx1 = params[0];
     uint64_t in_idx2 = params[1];
     uint64_t len = params[2];
 
-    IDX_CHECK(in_idx);
+    IDX_CHECK(in_idx1);
     IDX_CHECK(in_idx2);
-    return strncmp((void *)(get_param(param_page, in_idx) ), (void *)(get_param(param_page, in_idx2) ), len);
+    return strncmp((void *)(get_param(param_page, in_idx1) ), (void *)(get_param(param_page, in_idx2) ), len);
+}
+
+EXPORT int my_memfill(uint64_t *param_page, const uint64_t *params, int params_len)
+{
+    const static int used_len = 3; // this function need 3 input
+    LEN_CHECK(used_len, params_len);
+    uint64_t fill_idx = params[0];
+    uint64_t src_addr = params[1];
+    uint64_t len = params[2];
+
+    IDX_CHECK(fill_idx);
+
+    memset((void *)(get_param(param_page, fill_idx) ), (void *) src_addr , len);
+    return 0;
 }
 #ifndef _WIN32
 EXPORT int my_open_fd(uint64_t *param_page, const uint64_t *params, int params_len)

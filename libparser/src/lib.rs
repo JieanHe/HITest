@@ -90,8 +90,15 @@ impl FnAttr {
                         params.push(num);
                         succ = true;
                         break;
+                    } else if para.starts_with('\'') && para.ends_with('\'') {
+                        let content = &para[1..para.len() - 1];
+                        let box_str:Box<String> = Box::new(content.to_string());
+                        params.push(box_str.as_ptr() as u64);
+                        succ = true;
+                        break;
                     }
                 }
+
             }
             if !succ {
                 return Err(format!(
