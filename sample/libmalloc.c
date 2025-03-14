@@ -43,22 +43,22 @@
         }                                                                                    \
     } while (0)
 
-static inline uint64_t get_param(uint64_t *param_page, long idx)
+static inline uint64_t get_param(uint64_t *param_page, uint64_t idx)
 {
     return param_page[idx];
 }
-static inline void set_param(uint64_t *param_page, long idx, uint64_t val)
+static inline void set_param(uint64_t *param_page, uint64_t idx, uint64_t val)
 {
     param_page[idx] = val;
 }
 
-EXPORT int my_malloc(uint64_t *param_page, const long *params, int params_len)
+EXPORT int my_malloc(uint64_t *param_page, const uint64_t *params, int params_len)
 {
     const static int used_len = 2; // this function need 2 input
     LEN_CHECK(used_len, params_len);
 
-    long len = params[0];
-    long out_idx = params[1];
+    uint64_t len = params[0];
+    uint64_t out_idx = params[1];
     IDX_CHECK(out_idx);
     void *addr = malloc(len);
     if (!addr) // this function need 1 input
@@ -68,12 +68,12 @@ EXPORT int my_malloc(uint64_t *param_page, const long *params, int params_len)
     return 0;
 }
 
-EXPORT int my_free(uint64_t *param_page, const long *params, int params_len)
+EXPORT int my_free(uint64_t *param_page, const uint64_t *params, int params_len)
 {
     const static int used_len = 1; // this function need 1 input
     LEN_CHECK(used_len, params_len);
 
-    long in_idx = params[0];
+    uint64_t in_idx = params[0];
     IDX_CHECK(in_idx);
     MEM_CHECK(in_idx);
     free((void *)get_param(param_page, in_idx));
@@ -81,25 +81,25 @@ EXPORT int my_free(uint64_t *param_page, const long *params, int params_len)
     return 0;
 }
 
-EXPORT int my_read32(uint64_t *param_page, const long *params, int params_len)
+EXPORT int my_read32(uint64_t *param_page, const uint64_t *params, int params_len)
 {
     const static int used_len = 2; // this function need 2 input
     LEN_CHECK(used_len, params_len);
 
-    long in_idx = params[0];
-    long offset = params[1];
+    uint64_t in_idx = params[0];
+    uint64_t offset = params[1];
     IDX_CHECK(in_idx);
     return *(int *)(get_param(param_page, in_idx) + offset);
 }
 
-EXPORT int my_write32(uint64_t *param_page, const long *params, int params_len)
+EXPORT int my_write32(uint64_t *param_page, const uint64_t *params, int params_len)
 {
     const static int used_len = 3; // this function need 3 input
     LEN_CHECK(used_len, params_len);
 
-    long in_idx = params[0];
-    long offset = params[1];
-    long val = params[2];
+    uint64_t in_idx = params[0];
+    uint64_t offset = params[1];
+    uint64_t val = params[2];
     IDX_CHECK(in_idx);
     *(int *)(get_param(param_page, in_idx) + offset) = val;
     return 0;

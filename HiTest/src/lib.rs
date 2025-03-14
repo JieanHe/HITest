@@ -2,7 +2,7 @@ use libparser::{FnAttr, LibParse};
 use log::{debug, error, info};
 use rayon::prelude::*;
 use serde::Deserialize;
-use std::{error::Error, os::raw::c_long};
+use std::error::Error;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
@@ -124,7 +124,7 @@ impl Cmd {
         &self,
         lib_parser: &LibParse,
         fn_attr: &FnAttr,
-        paras: &Vec<c_long>,
+        paras: &Vec<u64>,
     ) -> Result<bool, Box<dyn Error>> {
         let ret = match lib_parser.call_func_attr(fn_attr, paras) {
             Ok(r) => r,

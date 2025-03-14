@@ -6,7 +6,7 @@ use std::{
     error::Error,
     ffi::CString,
     fmt, fs,
-    os::raw::{c_int, c_long},
+    os::raw::c_int,
     path::{Path, PathBuf},
     process::Command,
     sync::Arc,
@@ -49,7 +49,7 @@ thread_local! {
 //  4k bytes buffer for api communication, buffer of parameters, number of parameters, and buffer of return value.
 type FnPtr = extern "C" fn(
     *mut u64,      // uint64_t* param_page
-    *const c_long, // const long* params
+    *const u64, // const long* params
     c_int,         // int params_len
 ) -> c_int;
 
@@ -63,14 +63,14 @@ impl FnAttr {
         FnAttr { fnptr, paras }
     }
 
-    fn run(&self, params: &[c_long]) -> i32 {
+    fn run(&self, params: &[u64]) -> i32 {
         TLS_PAGE.with(|addr| {
             let mut addr = addr.borrow_mut();
             (self.fnptr)(addr.as_mut_ptr(), params.as_ptr(), params.len() as c_int) as i32
         })
     }
 
-    pub fn parse_params(&self, config_params: &Vec<String>) -> Result<Vec<c_long>, Box<dyn Error>> {
+    pub fn parse_params(&self, config_params: &Vec<String>) -> Result<Vec<u64>, Box<dyn Error>> {
         if config_params.len() != self.paras.len() {
             return Err(format!(
                 "params size mismatch: expect params contains {} element, but got {}",
@@ -80,13 +80,13 @@ impl FnAttr {
             .into());
         }
 
-        let mut params: Vec<c_long> = Vec::new();
+        let mut params: Vec<u64> = Vec::new();
 
         for key in self.paras.clone() {
             let mut succ = false;
             for value in config_params {
                 if let Some(para) = value.strip_prefix(&format!("{}=", key)) {
-                    if let Ok(num) = para.parse::<c_long>() {
+                    if let Ok(num) = para.parse::<u64>() {
                         params.push(num);
                         succ = true;
                         break;
@@ -169,7 +169,7 @@ impl LibParse {
         config_params: &Vec<String>,
     ) -> Result<i32, Box<dyn Error>> {
         let func_attr = self.get_func(func_name)?;
-        let mut params: Vec<c_long> = func_attr.parse_params(config_params)?;
+        let mut params: Vec<u64> = func_attr.parse_params(config_params)?;
         params.resize(self.para_len, 0);
         Ok(func_attr.run(&params).try_into().unwrap())
     }
@@ -177,9 +177,9 @@ impl LibParse {
     pub fn call_func_attr(
         &self,
         fn_attr: &FnAttr,
-        config_params: &Vec<c_long>,
+        config_params: &Vec<u64>,
     ) -> Result<i32, Box<dyn Error>> {
-        let mut params: Vec<c_long> = config_params.clone();
+        let mut params: Vec<u64> = config_params.clone();
         params.resize(self.para_len, 0);
 
         Ok(fn_attr.run(&params).try_into().unwrap())
