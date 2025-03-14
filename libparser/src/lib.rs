@@ -48,8 +48,8 @@ thread_local! {
 
 //  4k bytes buffer for api communication, buffer of parameters, number of parameters, and buffer of return value.
 type FnPtr = extern "C" fn(
-    *mut u64,      // uint64_t* param_page
-    *const u64, // const long* params
+    *mut u64,      // uint64_t* param_page, for apis communication
+    *const u64, // const uint64_t* params, send parameters to wrapper
     c_int,         // int params_len
 ) -> c_int;
 

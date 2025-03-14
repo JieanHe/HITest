@@ -7,6 +7,7 @@
 #define EXPORT __declspec(dllexport)
 #define EXTRACT_BASE_FILE(file) (strrchr(file, '\\') ? strrchr(file, '\\') + 1 : file)
 #else
+#include <sys/mman.h>
 #define EXPORT __attribute__((visibility("default")))
 #define EXTRACT_BASE_FILE(file) (strrchr(file, '/') ? strrchr(file, '/') + 1 : file)
 #endif
@@ -104,3 +105,112 @@ EXPORT int my_write32(uint64_t *param_page, const uint64_t *params, int params_l
     *(int *)(get_param(param_page, in_idx) + offset) = val;
     return 0;
 }
+
+EXPORT int my_memcpy(uint64_t *param_page, const uint64_t *params, int params_len)
+{
+    const static int used_len = 3; // this function need 3 input
+    LEN_CHECK(used_len, params_len);
+    uint64_t in_idx = params[0];
+    uint64_t out_idx = params[1];
+    uint64_t len = params[2];
+    IDX_CHECK(in_idx);
+    uint64_t len = params[2];
+    IDX_CHECK(in_idx);
+    MEM_CHECK(in_idx);
+    void *dst = malloc(len);
+    if (!dst)
+        return -22;
+
+    memcpy(dst, (void *)(get_param(param_page, in_idx) ), len);
+    set_param(param_page, out_idx, (uint64_t)dst);
+    return 0;
+}
+
+EXPORT int my_strlen(uint64_t *param_page, const uint64_t *params, int params_len)
+{
+    const static int used_len = 2; // this function need 1 input
+    LEN_CHECK(used_len, params_len);
+    uint64_t in_idx = params[0];
+    uint64_t out_idx = params[1];
+
+    IDX_CHECK(in_idx);
+    IDX_CHECK(out_idx);
+    return strlen((void *)(get_param(param_page, in_idx) ));
+}
+
+EXPORT int my_strcmp(uint64_t *param_page, const uint64_t *params, int params_len)
+{
+    const static int used_len = 2; // this function need 2 input
+    LEN_CHECK(used_len, params_len);
+    uint64_t in_idx = params[0];
+    uint64_t in_idx2 = params[1];
+    uint64_t len = params[2];
+
+    IDX_CHECK(in_idx);
+    IDX_CHECK(in_idx2);
+    return strncmp((void *)(get_param(param_page, in_idx) ), (void *)(get_param(param_page, in_idx2) ), len);
+}
+#ifndef _WIN32
+EXPORT int my_open_fd(uint64_t *param_page, const uint64_t *params, int params_len)
+{
+    const static int used_len = 1; // this function need 2 input
+    LEN_CHECK(used_len, params_len);
+
+    uint64_t out_fd_idx = params[0];
+    IDX_CHECK(out_fd_idx);
+
+    int fd = open("/dev/mem", O_RDWR|O_SYNC);
+    if (fd < 0)
+        return -22;
+
+    set_param(param_page, out_fd_idx, (uint64_t)fd);
+    return 0;
+}
+
+EXPORT int my_close_fd(uint64_t *param_page, const uint64_t *params, int params_len)
+{
+    const static int used_len = 1; // this function need 2 input
+    LEN_CHECK(used_len, params_len);
+
+    uint64_t in_fd_idx = params[0];
+    IDX_CHECK(in_fd_idx);
+
+    close((int)get_param(param_page, in_fd_idx));
+    set_param(param_page, in_fd_idx, 0);
+    return 0;
+}
+
+EXPORT int my_mmap(uint64_t *param_page, const uint64_t *params, int params_len)
+{
+    const static int used_len = 4; // this function need 4 input
+    LEN_CHECK(used_len, params_len);
+    uint64_t in_fd_idx = params[0];
+    uint64_t out_addr_idx = params[1];
+    uint64_t len = params[2];
+    uint64_t prot = params[3];
+
+    IDX_CHECK(in_fd_idx);
+    IDX_CHECK(out_addr_idx);
+
+    void *addr = mmap(NULL, len, prot, MAP_SHARED, (int)get_param(param_page, in_fd_idx), 0);
+    if (!addr)
+        return -22;
+
+    set_param(param_page, out_addr_idx, (uint64_t)addr);
+    return 0;
+}
+
+EXPORT int my_munmap(uint64_t *param_page, const uint64_t *params, int params_len)
+{
+    const static int used_len = 2; // this function need 2 input
+    LEN_CHECK(used_len, params_len);
+    uint64_t in_addr_idx = params[0];
+    uint64_t len = params[1];
+
+    IDX_CHECK(in_addr_idx);
+
+    munmap((void *)get_param(param_page, in_addr_idx), len);
+    set_param(param_page, in_addr_idx, 0);
+    return 0;
+}
+#endif
