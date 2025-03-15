@@ -23,14 +23,14 @@
         }                                                                                                                              \
     } while (0)
 
-#define MEM_CHECK(idx)                                                                                                    \
-    do                                                                                                                    \
-    {                                                                                                                     \
-        if (param_page[idx] == 0)                                                                                           \
-        {                                                                                                                 \
+#define MEM_CHECK(idx)                                                                                                \
+    do                                                                                                                \
+    {                                                                                                                 \
+        if (param_page[idx] == 0)                                                                                     \
+        {                                                                                                             \
             printf("[%s : line %d]  ERROR: idx %ld get NULL address!\n", EXTRACT_BASE_FILE(__FILE__), __LINE__, idx); \
-            return -12;                                                                                                   \
-        }                                                                                                                 \
+            return -12;                                                                                               \
+        }                                                                                                             \
     } while (0)
 
 #define LEN_CHECK(used_len, max_len)                                                         \
@@ -117,7 +117,7 @@ EXPORT int my_memcpy(uint64_t *param_page, const uint64_t *params, int params_le
     IDX_CHECK(in_srcidx);
     IDX_CHECK(in_dstidx);
 
-    memcpy((void *)(get_param(param_page, in_dstidx) ), (void *)(get_param(param_page, in_srcidx) ), len);
+    memcpy((void *)(get_param(param_page, in_dstidx)), (void *)(get_param(param_page, in_srcidx)), len);
 
     return 0;
 }
@@ -129,8 +129,8 @@ EXPORT int my_strlen(uint64_t *param_page, const uint64_t *params, int params_le
     uint64_t in_idx = params[0];
 
     IDX_CHECK(in_idx);
-
-    return strlen((void *)(get_param(param_page, in_idx) ));
+    // printf("stris: %s\n", (void *)(get_param(param_page, in_idx)));
+    return strlen((void *)(get_param(param_page, in_idx)));
 }
 
 EXPORT int my_strcmp(uint64_t *param_page, const uint64_t *params, int params_len)
@@ -143,10 +143,10 @@ EXPORT int my_strcmp(uint64_t *param_page, const uint64_t *params, int params_le
 
     IDX_CHECK(in_idx1);
     IDX_CHECK(in_idx2);
-    return strncmp((void *)(get_param(param_page, in_idx1) ), (void *)(get_param(param_page, in_idx2) ), len);
+    return strncmp((void *)(get_param(param_page, in_idx1)), (void *)(get_param(param_page, in_idx2)), len);
 }
 
-EXPORT int my_memfill(uint64_t *param_page, const uint64_t *params, int params_len)
+EXPORT int my_strfill(uint64_t *param_page, const uint64_t *params, int params_len)
 {
     const static int used_len = 3; // this function need 3 input
     LEN_CHECK(used_len, params_len);
@@ -155,8 +155,11 @@ EXPORT int my_memfill(uint64_t *param_page, const uint64_t *params, int params_l
     uint64_t len = params[2];
 
     IDX_CHECK(fill_idx);
+    if (len != strlen((char *)src_addr))
+        return 1;
+    char *addr = (char *)(get_param(param_page, fill_idx));
+    strcpy(addr, (char *)src_addr);
 
-    memset((void *)(get_param(param_page, fill_idx) ), (void *) src_addr , len);
     return 0;
 }
 #ifndef _WIN32
@@ -168,7 +171,7 @@ EXPORT int my_open_fd(uint64_t *param_page, const uint64_t *params, int params_l
     uint64_t out_fd_idx = params[0];
     IDX_CHECK(out_fd_idx);
 
-    int fd = open("/dev/mem", O_RDWR|O_SYNC);
+    int fd = open("/dev/mem", O_RDWR | O_SYNC);
     if (fd < 0)
         return -22;
 

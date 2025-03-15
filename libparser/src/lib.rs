@@ -44,6 +44,7 @@ struct Lib {
 type AddressArray = [u64; 512];
 thread_local! {
     static TLS_PAGE: RefCell<AddressArray> = RefCell::new([0; 512]);
+    static C_STRINGS: RefCell<Vec<CString>> = RefCell::new(Vec::new());
 }
 
 //  4k bytes buffer for api communication, buffer of parameters, number of parameters, and buffer of return value.
@@ -92,8 +93,14 @@ impl FnAttr {
                         break;
                     } else if para.starts_with('\'') && para.ends_with('\'') {
                         let content = &para[1..para.len() - 1];
-                        let box_str:Box<String> = Box::new(content.to_string());
-                        params.push(box_str.as_ptr() as u64);
+                        let c_str = CString::new(content)
+                            .map_err(|e| format!("Invalid string parameter: {}", e))?;
+                        let raw_ptr = c_str.clone().into_raw();
+                        C_STRINGS.with(|c_strings| {
+                            let mut c_strings = c_strings.borrow_mut();
+                            c_strings.push(c_str);
+                        }); // keep c_str alive
+                        params.push(raw_ptr as u64);
                         succ = true;
                         break;
                     }
