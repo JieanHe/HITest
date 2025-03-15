@@ -5,23 +5,15 @@ use std::{
     collections::HashMap,
     error::Error,
     ffi::CString,
-    fmt, fs,
+    fs,
     os::raw::c_int,
     path::{Path, PathBuf},
     process::Command,
     sync::Arc,
 };
 use toml;
-
-#[derive(Debug)]
-struct LibError(String);
-impl fmt::Display for LibError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl Error for LibError {}
+mod error;
+pub use error::LibError;
 
 #[derive(Deserialize)]
 struct LibConfig {
@@ -49,9 +41,9 @@ thread_local! {
 
 //  4k bytes buffer for api communication, buffer of parameters, number of parameters, and buffer of return value.
 type FnPtr = extern "C" fn(
-    *mut u64,      // uint64_t* param_page, for apis communication
+    *mut u64,   // uint64_t* param_page, for apis communication
     *const u64, // const uint64_t* params, send parameters to wrapper
-    c_int,         // int params_len
+    c_int,      // int params_len
 ) -> c_int;
 
 pub struct FnAttr {
@@ -105,7 +97,6 @@ impl FnAttr {
                         break;
                     }
                 }
-
             }
             if !succ {
                 return Err(format!(
@@ -133,18 +124,14 @@ impl LibParse {
         let mut funcs = HashMap::new();
 
         let config = fs::read_to_string(config)
-            .map_err(|_| LibError(format!("failed to read config file {}", config)))?;
+            .map_err(|e| LibError::LoadError(config.into(), format!("{}", e)))?;
 
         let config: LibConfig = toml::from_str(&config)
-            .map_err(|_| LibError(format!("failed to parse TOML config file {}", config)))?;
+            .map_err(|e| LibError::LoadError(config.into(), format!("{}", e)))?;
 
         for lib_file in config.libs {
-            let lib = unsafe { Library::new(lib_file.path.clone()) }.map_err(|e| {
-                LibError(format!(
-                    "failed to load library file {}: {}",
-                    lib_file.path, e
-                ))
-            })?;
+            let lib = unsafe { Library::new(lib_file.path.clone()) }
+                .map_err(|e| LibError::LoadError(lib_file.path, format!("{}", e)))?;
 
             let lib_arc = Arc::new(lib);
             libs.push(lib_arc.clone());
@@ -152,12 +139,7 @@ impl LibParse {
                 let func_name = func.name;
                 let c_func_name = CString::new(func_name.clone())?;
                 let func_ptr: Symbol<FnPtr> = unsafe { lib_arc.get(c_func_name.as_bytes()) }
-                    .map_err(|_| {
-                        LibError(format!(
-                            "failed to get function {} form library {}",
-                            func_name, lib_file.path
-                        ))
-                    })?;
+                    .map_err(|_| LibError::FuncNotFound(func_name.clone()))?;
                 let func_attr = FnAttr::new(*func_ptr, func.paras);
                 funcs.insert(func_name, Arc::new(Box::new(func_attr)));
             }
