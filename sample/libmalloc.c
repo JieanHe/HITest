@@ -8,6 +8,8 @@
 #define EXTRACT_BASE_FILE(file) (strrchr(file, '\\') ? strrchr(file, '\\') + 1 : file)
 #else
 #include <sys/mman.h>
+#include <fcntl.h> 
+#include <unistd.h>
 #define EXPORT __attribute__((visibility("default")))
 #define EXTRACT_BASE_FILE(file) (strrchr(file, '/') ? strrchr(file, '/') + 1 : file)
 #endif
