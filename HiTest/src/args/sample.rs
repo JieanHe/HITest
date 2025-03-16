@@ -66,13 +66,28 @@ pub fn prepare_sample_files() -> (String, String) {
 
     {
         let test_case = r#"
+concurrences = [
+    { tests = ["test_rw_u32", "Test_str_fill"], serial = false, name = "group1" },
+    ]
+
+
 [[tests]]
-name = "Test_Case_1"
-thread_num=200
+name = "test_rw_u32"
+thread_num=100
 cmds = [
     { opfunc = "my_malloc", expect_res = 0, args = ["len=100", "mem_idx=1"] },
     { opfunc = "my_write32", expect_res = 0, args = ["mem_idx=1", "offset=0", "val=888"] },
     { opfunc = "my_read32", expect_res = 888, args = ["mem_idx=1", "offset=0"] },
+    { opfunc = "my_write32", expect_res = 0, args = ["mem_idx=1", "offset=0", "val=444"] },
+    { opfunc = "my_read32", expect_res = 444, args = ["mem_idx=1", "offset=0"] },
+    { opfunc = "my_free", expect_res = 0, args = ["mem_idx=1"] },
+]
+
+[[tests]]
+name = "Test_str_fill"
+thread_num=200
+cmds = [
+    { opfunc = "my_malloc", expect_res = 0, args = ["len=100", "mem_idx=1"] },
     { opfunc = "my_strfill", expect_res = 0, args = ["fill_idx=1", "content='abcdefg'", "len=7"] },
     { opfunc = "my_malloc", expect_res = 0, args = ["mem_idx=2", "len=8"] },
     { opfunc = "my_memcpy", expect_res = 0, args = ["in_srcidx=1", "in_dstidx=2", "len=8"] },
@@ -82,7 +97,6 @@ cmds = [
     { opfunc = "my_free", expect_res = 0, args = ["mem_idx=1"] },
     { opfunc = "my_free", expect_res = 0, args = ["mem_idx=2"] }
 ]
-
     "#;
         let mut file = File::create(SAMPLE_TEST_CFG).unwrap();
         let _ = file.write_all(test_case.as_bytes());

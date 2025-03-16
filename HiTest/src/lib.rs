@@ -6,10 +6,21 @@ use std::error::Error;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
+    #[serde(default)]
+    concurrences: Option<Vec<ConcurrencyGroup>>,
+
     tests: Vec<Test>,
 }
 
 #[derive(Debug, Deserialize)]
+struct ConcurrencyGroup {
+    tests: Vec<String>,
+    serial: bool,
+    #[serde(default = "default_name")]
+    name: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
 struct Test {
     name: String,
     cmds: Vec<Cmd>,
@@ -19,6 +30,10 @@ struct Test {
 
 fn default_one() -> i32 {
     1
+}
+
+fn default_name() -> String {
+    String::from("default_group")
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -35,6 +50,15 @@ impl Config {
             return;
         }
 
+        // run concurrency group
+        if let Some(concurrences) = self.concurrences {
+            info!("Starting run concurrency groups!");
+            for concurrency in concurrences {
+                if concurrency.run(lib_parser, &self.tests) {
+                    info!("run concurrency group {} succeeded!\n", concurrency.name);
+                }
+            }
+        }
         // run test cases
         for test in self.tests {
             info!(
@@ -52,6 +76,76 @@ impl Config {
     }
 }
 
+impl ConcurrencyGroup {
+    pub fn run(&self, lib_parser: &LibParse, tests: &Vec<Test>) -> bool {
+        if self.tests.is_empty() {
+            return true;
+        }
+
+        let mut test_cases: Vec<Test> = Vec::new();
+        for test in tests {
+            if self.tests.contains(&test.name) {
+                test_cases.push(test.clone());
+            }
+        }
+
+        if test_cases.is_empty() {
+            return true;
+        }
+        debug!(
+            "Concurrency Group {} Contains test cases: {:#?}, serial option: {}",
+            self.name, self.tests, self.serial
+        );
+        let mut succ: bool = true;
+        if self.serial {
+            for test in test_cases {
+                if test.run(lib_parser) {
+                    error!("test case {} in concurrency {} serially execute failed!", test.name, self.name);
+                    return false;
+                }
+            }
+            info!(
+                "Serial execute concurrency Group {} with {} test cases, all passed!",
+                self.name,
+                self.tests.len()
+            );
+        } else {
+            // parallel with other test cases ignore source thread num
+            test_cases.par_iter_mut().for_each(|test| {
+               test.thread_num = 1;
+            });
+            let results: Vec<_> = test_cases
+                .into_par_iter()
+                .map(|test| test.run(lib_parser))
+                .collect();
+
+            let count = results.into_iter().filter(|&x| x).count();
+            debug!(
+                "Parallel execute concurrency Group {} with {} thread, {} passed!",
+                self.name,
+                self.tests.len(),
+                count
+            );
+
+            succ = count as usize == self.tests.len();
+            if succ {
+                info!(
+                    "Parallel execute concurrency Group {} with {} thread, all passed!",
+                    self.name,
+                    self.tests.len()
+                );
+            } else {
+                error!(
+                    "Parallel execute concurrency Group {} with {} thread, {} passed!",
+                    self.name,
+                    self.tests.len(),
+                    count
+                );
+            }
+        }
+        return succ;
+    }
+}
 impl Test {
     fn run_one_thread(&self, lib_parser: &LibParse) -> bool {
         let mut res = true;
@@ -73,10 +167,10 @@ impl Test {
 
             match cmd.run(&lib_parser, &fn_attr, &paras) {
                 Ok(v) => {
-                    if!v {
+                    if !v {
                         res = false;
                     }
-                },
+                }
                 Err(e) => {
                     error!("execute cmd {} failed! Error: {}\n", &cmd.opfunc, e);
                     return false;
