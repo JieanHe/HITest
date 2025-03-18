@@ -35,8 +35,8 @@ pub fn prepare_sample_files() -> (String, String) {
       # path = "./other_dir/another_lib.dll"
       # funcs = [...]
     "#;
-    #[cfg(unix)]
-    let config_content = r#"
+        #[cfg(unix)]
+        let config_content = r#"
 
     para_len = 3  # The default parameter length is 8,
     # which can be modified according to the actual situation of the lib,
@@ -65,7 +65,7 @@ pub fn prepare_sample_files() -> (String, String) {
     }
 
     {
-        let test_case = r#"
+        let mut test_case:String = r#"
 concurrences = [
     { tests = ["test_rw_u32", "Test_str_fill"], serial = false, name = "group1" },
     ]
@@ -97,7 +97,36 @@ cmds = [
     { opfunc = "my_free", expect_res = 0, args = ["mem_idx=1"] },
     { opfunc = "my_free", expect_res = 0, args = ["mem_idx=2"] }
 ]
-    "#;
+    "#.to_string();
+        #[cfg(unix)]
+        let panic_test = r#"
+[[tests]]
+name = "test_write_panic"
+thread_num=100
+should_panic=true
+cmds = [
+    { opfunc = "my_malloc", expect_res = 0, args = ["len=100", "mem_idx=1"] },
+    { opfunc = "my_write32", expect_res = 0, args = ["mem_idx=1", "offset=0", "val=888"] },
+    { opfunc = "my_read32", expect_res = 888, args = ["mem_idx=1", "offset=0"] },
+    { opfunc = "my_free", expect_res = 0, args = ["mem_idx=1"] },
+    { opfunc = "my_write32", expect_res = 0, args = ["mem_idx=1", "offset=0", "val=444"] },
+]
+
+[[tests]]
+name = "test_read_panic"
+thread_num=100
+should_panic=true
+cmds = [
+    { opfunc = "my_malloc", expect_res = 0, args = ["len=100", "mem_idx=1"] },
+    { opfunc = "my_write32", expect_res = 0, args = ["mem_idx=1", "offset=0", "val=888"] },
+    { opfunc = "my_read32", expect_res = 888, args = ["mem_idx=1", "offset=0"] },
+    { opfunc = "my_free", expect_res = 0, args = ["mem_idx=1"] },
+    { opfunc = "my_read32", expect_res = 888, args = ["mem_idx=1", "offset=0"] },
+]
+"#;
+        #[cfg(unix)]
+        test_case.push_str(panic_test);
+
         let mut file = File::create(SAMPLE_TEST_CFG).unwrap();
         let _ = file.write_all(test_case.as_bytes());
     }

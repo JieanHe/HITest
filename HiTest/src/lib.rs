@@ -1,12 +1,11 @@
 use libparser::{FnAttr, LibParse};
 use log::{debug, error, info};
+#[cfg(unix)]
+use nix::{sys::wait::waitpid, sys::wait::WaitStatus, unistd::fork, unistd::ForkResult};
+
 use rayon::prelude::*;
 use serde::Deserialize;
 use std::error::Error;
-use nix::sys::wait::waitpid;
-use nix::sys::wait::WaitStatus;
-use nix::unistd::fork;
-use nix::unistd::ForkResult;
 use std::process::exit;
 
 #[derive(Debug, Deserialize)]
@@ -32,7 +31,7 @@ struct Test {
     #[serde(default = "default_one")]
     thread_num: i32,
     #[serde(default = "default_false")]
-    should_panic: bool,    
+    should_panic: bool,
 }
 
 fn default_false() -> bool {
@@ -111,7 +110,10 @@ impl ConcurrencyGroup {
         if self.serial {
             for test in test_cases {
                 if test.run(lib_parser) {
-                    error!("test case {} in concurrency {} serially execute failed!", test.name, self.name);
+                    error!(
+                        "test case {} in concurrency {} serially execute failed!",
+                        test.name, self.name
+                    );
                     return false;
                 }
             }
@@ -123,7 +125,7 @@ impl ConcurrencyGroup {
         } else {
             // parallel with other test cases ignore source thread num
             test_cases.par_iter_mut().for_each(|test| {
-               test.thread_num = 1;
+                test.thread_num = 1;
             });
             let results: Vec<_> = test_cases
                 .into_par_iter()
@@ -159,7 +161,8 @@ impl ConcurrencyGroup {
 }
 
 impl Test {
-    fn check_panic(mut child_test:  Self, lib_parser: &LibParse) -> bool {
+    fn check_panic(mut child_test: Self, lib_parser: &LibParse) -> bool {
+        #[cfg(unix)]
         match unsafe { fork() } {
             Ok(ForkResult::Child) => {
                 child_test.thread_num = 1;
@@ -168,7 +171,7 @@ impl Test {
             }
             Ok(ForkResult::Parent { child }) => {
                 let status = waitpid(child, None).expect("等待子进程失败");
-                
+
                 // 模式匹配处理退出状态
                 match status {
                     WaitStatus::Exited(_, code) => {
@@ -180,7 +183,10 @@ impl Test {
                         return true;
                     }
                     _ => {
-                        error!("child process unexpectedly exited with status: {:?}", status);
+                        error!(
+                            "child process unexpectedly exited with status: {:?}",
+                            status
+                        );
                         return true;
                     }
                 }
@@ -188,8 +194,17 @@ impl Test {
             Err(e) => {
                 error!("start child failed with error: {:?}", e);
                 return false;
-            },
+            }
         }
+        #[cfg(not(unix))]
+        {
+            error!(
+                "error: panic check only support unix, skip test case {}!",
+                child_test.name
+            );
+            return true;
+        }
+
     }
 
     fn run_one_thread(&self, lib_parser: &LibParse) -> bool {
