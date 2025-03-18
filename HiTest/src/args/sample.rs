@@ -65,6 +65,7 @@ pub fn prepare_sample_files() -> (String, String) {
     }
 
     {
+        #[cfg_attr(not(unix), allow(unused_mut))]
         let mut test_case:String = r#"
 concurrences = [
     { tests = ["test_rw_u32", "Test_str_fill"], serial = false, name = "group1" },

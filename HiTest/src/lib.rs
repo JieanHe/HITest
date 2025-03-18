@@ -6,6 +6,7 @@ use nix::{sys::wait::waitpid, sys::wait::WaitStatus, unistd::fork, unistd::ForkR
 use rayon::prelude::*;
 use serde::Deserialize;
 use std::error::Error;
+#[cfg(unix)]
 use std::process::exit;
 
 #[derive(Debug, Deserialize)]
@@ -161,6 +162,8 @@ impl ConcurrencyGroup {
 }
 
 impl Test {
+
+    #[cfg_attr(not(unix), allow(unused_variables), allow(unused_mut))]
     fn check_panic(mut child_test: Self, lib_parser: &LibParse) -> bool {
         #[cfg(unix)]
         match unsafe { fork() } {
