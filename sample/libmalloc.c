@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
-
+#include <errno.h>
 #ifdef _WIN32
 #define EXPORT __declspec(dllexport)
 #define EXTRACT_BASE_FILE(file) (strrchr(file, '\\') ? strrchr(file, '\\') + 1 : file)
@@ -167,16 +167,19 @@ EXPORT int my_strfill(uint64_t *param_page, const uint64_t *params, int params_l
 #ifndef _WIN32
 EXPORT int my_open_fd(uint64_t *param_page, const uint64_t *params, int params_len)
 {
-    const static int used_len = 1; // this function need 2 input
+    const static int used_len = 2; // this function need 2 input
     LEN_CHECK(used_len, params_len);
 
-    uint64_t out_fd_idx = params[0];
+    char *strAddr = (char *)params[0];
+    uint64_t out_fd_idx = params[1];
     IDX_CHECK(out_fd_idx);
 
-    int fd = open("/dev/mem", O_RDWR | O_SYNC);
-    if (fd < 0)
-        return -22;
-
+    int fd = open(strAddr, O_RDWR | O_SYNC);
+    if (fd < 0) {
+        printf("open %s failed, error: %s\n", strAddr, strerror(errno));
+        return fd;
+    }
+        
     set_param(param_page, out_fd_idx, (uint64_t)fd);
     return 0;
 }
@@ -201,12 +204,11 @@ EXPORT int my_mmap(uint64_t *param_page, const uint64_t *params, int params_len)
     uint64_t in_fd_idx = params[0];
     uint64_t out_addr_idx = params[1];
     uint64_t len = params[2];
-    uint64_t prot = params[3];
 
     IDX_CHECK(in_fd_idx);
     IDX_CHECK(out_addr_idx);
 
-    void *addr = mmap(NULL, len, prot, MAP_SHARED, (int)get_param(param_page, in_fd_idx), 0);
+    void *addr = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_SHARED, (int)get_param(param_page, in_fd_idx), 0);
     if (!addr)
         return -22;
 
