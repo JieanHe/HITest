@@ -3,6 +3,11 @@ use log::{debug, error, info};
 use rayon::prelude::*;
 use serde::Deserialize;
 use std::error::Error;
+use nix::sys::wait::waitpid;
+use nix::sys::wait::WaitStatus;
+use nix::unistd::fork;
+use nix::unistd::ForkResult;
+use std::process::exit;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
@@ -26,6 +31,12 @@ struct Test {
     cmds: Vec<Cmd>,
     #[serde(default = "default_one")]
     thread_num: i32,
+    #[serde(default = "default_false")]
+    should_panic: bool,    
+}
+
+fn default_false() -> bool {
+    false
 }
 
 fn default_one() -> i32 {
@@ -146,7 +157,41 @@ impl ConcurrencyGroup {
         return succ;
     }
 }
+
 impl Test {
+    fn check_panic(mut child_test:  Self, lib_parser: &LibParse) -> bool {
+        match unsafe { fork() } {
+            Ok(ForkResult::Child) => {
+                child_test.thread_num = 1;
+                child_test.run_one_thread(lib_parser);
+                exit(0);
+            }
+            Ok(ForkResult::Parent { child }) => {
+                let status = waitpid(child, None).expect("等待子进程失败");
+                
+                // 模式匹配处理退出状态
+                match status {
+                    WaitStatus::Exited(_, code) => {
+                        error!("child process exit as code {}.", code);
+                        return false;
+                    }
+                    WaitStatus::Signaled(_, signal, _) => {
+                        info!("child process been terminate with signal {:#?}.", signal);
+                        return true;
+                    }
+                    _ => {
+                        error!("child process unexpectedly exited with status: {:?}", status);
+                        return true;
+                    }
+                }
+            }
+            Err(e) => {
+                error!("start child failed with error: {:?}", e);
+                return false;
+            },
+        }
+    }
+
     fn run_one_thread(&self, lib_parser: &LibParse) -> bool {
         let mut res = true;
         for cmd in self.cmds.clone() {
@@ -182,6 +227,11 @@ impl Test {
     }
 
     fn run(&self, lib_parser: &LibParse) -> bool {
+        if self.should_panic {
+            let child_test = self.clone();
+            return Test::check_panic(child_test, lib_parser);
+        }
+
         if self.thread_num == 1 {
             return self.run_one_thread(lib_parser);
         }
