@@ -4,7 +4,7 @@ use log::{debug, error, info};
 use nix::{sys::wait::waitpid, sys::wait::WaitStatus, unistd::fork, unistd::ForkResult};
 
 use rayon::prelude::*;
-use serde::Deserialize;
+use serde::{de::Error as DError, Deserialize, Deserializer};
 use std::error::Error;
 #[cfg(unix)]
 use std::process::exit;
@@ -54,10 +54,39 @@ fn default_name() -> String {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-struct Cmd {
-    opfunc: String,
-    expect_res: i32,
-    args: Vec<String>,
+pub struct Cmd {
+    pub opfunc: String,
+    #[serde(flatten)]
+    pub condition: Condition,
+    pub args: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Condition {
+    Eq(i32),
+    Ne(i32),
+}
+
+impl<'de> Deserialize<'de> for Condition {
+    fn deserialize<D>(deserializer: D) -> Result<Self, <D as Deserializer<'de>>::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Helper {
+            expect_eq: Option<i32>,
+            expect_ne: Option<i32>,
+        }
+
+        let helper = Helper::deserialize(deserializer)?;
+
+        match (helper.expect_eq, helper.expect_ne) {
+            (Some(eq), None) => Ok(Condition::Eq(eq)),
+            (None, Some(ne)) => Ok(Condition::Ne(ne)),
+            (Some(_), Some(_)) => Err(D::Error::custom("mutually exclusive fields")),
+            (None, None) => Err(D::Error::custom("missing condition")),
+        }
+    }
 }
 
 impl Config {
@@ -168,7 +197,6 @@ impl ConcurrencyGroup {
 }
 
 impl Test {
-
     #[cfg_attr(not(unix), allow(unused_variables), allow(unused_mut))]
     fn check_panic(mut child_test: Self, lib_parser: &LibParse) -> bool {
         #[cfg(unix)]
@@ -213,7 +241,6 @@ impl Test {
             );
             return true;
         }
-
     }
 
     fn run_one_thread(&self, lib_parser: &LibParse) -> bool {
@@ -305,18 +332,23 @@ impl Cmd {
             Ok(r) => r,
             Err(e) => return Err(e),
         };
-        if ret != self.expect_res {
-            error!(
-                "execute cmd: {}{:?}, expect return: {}, actual: {}",
-                self.opfunc, self.args, self.expect_res, ret
-            );
+
+        let (expected, operator, is_success) = match &self.condition {
+            Condition::Eq(v) => (v, "==", ret == *v),
+            Condition::Ne(v) => (v, "!=", ret != *v),
+        };
+
+        let message = format!(
+            "execute cmd: {}{:?}, expect return value {}{}, actual: {}",
+            self.opfunc, self.args, operator, expected, ret
+        );
+
+        if !is_success {
+            error!("{}", message);
         } else {
-            debug!(
-                "execute cmd: {}{:?} succeeded, expect return: {}, actual: {}",
-                self.opfunc, self.args, self.expect_res, ret
-            );
+            debug!("{} succeeded", message);
         }
 
-        Ok(ret == self.expect_res)
+        Ok(is_success)
     }
 }
