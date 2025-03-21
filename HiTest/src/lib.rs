@@ -33,10 +33,16 @@ struct Test {
     thread_num: i32,
     #[serde(default = "default_false")]
     should_panic: bool,
+    #[serde(default = "default_true")]
+    break_if_fail: bool,
 }
 
 fn default_false() -> bool {
     false
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_one() -> i32 {
@@ -232,6 +238,13 @@ impl Test {
                 Ok(v) => {
                     if !v {
                         res = false;
+                        if self.break_if_fail {
+                            error!(
+                                "Test case {} stopped because cmd {} executing failed!\n",
+                                self.name, &cmd.opfunc
+                            );
+                            return false;
+                        }
                     }
                 }
                 Err(e) => {
