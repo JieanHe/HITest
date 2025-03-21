@@ -17,7 +17,7 @@ pub struct Config {
     tests: Vec<Test>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct ConcurrencyGroup {
     tests: Vec<String>,
     serial: bool,
@@ -61,7 +61,7 @@ pub struct Cmd {
     pub args: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Condition {
     Eq(i32),
     Ne(i32),
@@ -350,5 +350,102 @@ impl Cmd {
         }
 
         Ok(is_success)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn test_parse_config() {
+        let config_content = r#"
+        [[tests]]
+        name = "test_rw_u32"
+        thread_num=100
+        cmds = [
+            { opfunc = "my_malloc", expect_eq = 0, args = ["len=100", "mem_idx=   1"] },
+            { opfunc = "my_write32", expect_eq = 0, args = ["mem_idx=1", "offset=0", "val=888"] },
+            { opfunc = "my_read32", expect_eq = 888, args = ["mem_idx=1", "offset=0"] },
+            { opfunc = "my_write32", expect_eq = 0, args = ["mem_idx=1", "offset=0", "val=444"] },
+            { opfunc = "my_read32", expect_eq = 444, args = ["mem_idx=1", "offset=0"] },
+            { opfunc = "my_free", expect_eq = 0, args = ["mem_idx=1"] },
+        ]
+        "#;
+
+        let config: Config = toml::from_str(config_content).unwrap();
+        assert_eq!(config.tests.len(), 1);
+        assert_eq!(config.tests[0].name, "test_rw_u32");
+    }
+
+    #[test]
+    fn test_parse_config_with_concurrency() {
+        let config_content = r#"
+        concurrences = [
+            { tests = ["test_rw_u32", "Test_str_fill"], serial = false, name = "group1" },
+            ]
+
+        [[tests]]
+        name = "test_rw_u32"
+        thread_num=100
+        cmds = [
+
+            { opfunc = "my_malloc", expect_eq = 0, args = ["len=100", "mem_idx=1"] },
+            { opfunc = "my_write32", expect_eq = 0, args = ["mem_idx=1", "offset=0", "val=888"] },
+        ]
+
+        [[tests]]
+        name = "Test_str_fill"
+        thread_num=100
+        cmds = [
+
+            { opfunc = "my_malloc", expect_eq = 0, args = ["len=100", "mem_idx=1"] },
+            { opfunc = "my_write32", expect_eq = 0, args = ["mem_idx=1", "offset=0", "val=888"] },
+        ]"#;
+
+        let config: Config = toml::from_str(config_content).unwrap();
+        assert_eq!(config.concurrences.clone().unwrap().len(), 1);
+        assert_eq!(config.concurrences.unwrap()[0].name, "group1");
+    }
+
+    #[test]
+    fn test_parse_config_with_panic() {
+        let config_content = r#"
+        [[tests]]
+        name = "test_write_panic"
+        thread_num=100
+        should_panic=true
+        cmds = [
+            { opfunc = "my_malloc", expect_eq = 0, args = ["len=100", "mem_idx=1"] },
+
+        ]"#;
+        let config: Config = toml::from_str(config_content).unwrap();
+        assert_eq!(config.tests.len(), 1);
+        assert_eq!(config.tests[0].name, "test_write_panic");
+        assert_eq!(config.tests[0].should_panic, true);
+    }
+
+    #[test]
+    fn test_parse_config_with_condition() {
+        let config_content = r#"
+        [[tests]]
+        name = "test_write_panic"
+        thread_num=100
+        should_panic=true
+        cmds = [
+            { opfunc = "my_malloc", expect_eq = 0, args = ["len=100", "mem_idx=1"] },
+            { opfunc = "my_write32", expect_ne = 0, args = ["mem_idx=1", "offset=0", "val=888"] },
+            { opfunc = "my_read32", expect_eq = 888, args = ["mem_idx=1", "offset=0"] },
+            { opfunc = "my_read32", expect_ne = 888, args = ["mem_idx=1", "offset=0"] },
+        ]"#;
+        let config: Config = toml::from_str(config_content).unwrap();
+        assert_eq!(config.tests.len(), 1);
+        assert_eq!(config.tests[0].name, "test_write_panic");
+        assert_eq!(config.tests[0].should_panic, true);
+        assert_eq!(config.tests[0].cmds[0].condition, Condition::Eq(0));
+        assert_eq!(config.tests[0].cmds[1].condition, Condition::Ne(0));
+        assert_eq!(config.tests[0].cmds[2].condition, Condition::Eq(888));
+        assert_eq!(config.tests[0].cmds[3].condition, Condition::Ne(888));
     }
 }
