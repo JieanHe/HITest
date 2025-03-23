@@ -17,7 +17,6 @@ pub use error::LibError;
 
 #[derive(Deserialize)]
 struct LibConfig {
-    para_len: usize,
     libs: Vec<Lib>,
 }
 
@@ -113,7 +112,6 @@ impl FnAttr {
 
 pub struct LibParse {
     funcs: HashMap<String, Arc<Box<FnAttr>>>,
-    para_len: usize,
     #[allow(dead_code)]
     libs: Vec<Arc<Library>>, // to keep library loaded from file on live, and this field will never be used.
 }
@@ -144,12 +142,8 @@ impl LibParse {
                 funcs.insert(func_name, Arc::new(Box::new(func_attr)));
             }
         }
-        let para_len = config.para_len;
-        Ok(LibParse {
-            libs,
-            para_len,
-            funcs,
-        })
+
+        Ok(LibParse { libs, funcs })
     }
 
     pub fn get_func(&self, name: &str) -> Result<Arc<Box<FnAttr>>, Box<dyn Error>> {
@@ -165,8 +159,8 @@ impl LibParse {
         config_params: &Vec<String>,
     ) -> Result<i32, Box<dyn Error>> {
         let func_attr = self.get_func(func_name)?;
-        let mut params: Vec<u64> = func_attr.parse_params(config_params)?;
-        params.resize(self.para_len, 0);
+        let params: Vec<u64> = func_attr.parse_params(config_params)?;
+
         Ok(func_attr.run(&params).try_into().unwrap())
     }
 
@@ -175,8 +169,7 @@ impl LibParse {
         fn_attr: &FnAttr,
         config_params: &Vec<u64>,
     ) -> Result<i32, Box<dyn Error>> {
-        let mut params: Vec<u64> = config_params.clone();
-        params.resize(self.para_len, 0);
+        let params: Vec<u64> = config_params.clone();
 
         Ok(fn_attr.run(&params).try_into().unwrap())
     }
