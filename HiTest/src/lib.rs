@@ -207,7 +207,7 @@ impl Test {
                 exit(0);
             }
             Ok(ForkResult::Parent { child }) => {
-                let status = waitpid(child, None).expect("等待子进程失败");
+                let status = waitpid(child, None).expect("Waiting for child failed");
 
                 // 模式匹配处理退出状态
                 match status {

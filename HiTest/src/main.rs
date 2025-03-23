@@ -33,10 +33,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // loading test cases
     let config: Config = match toml::from_str(&config_content) {
         Ok(t) => t,
-        _ => {
+        Err(e) => {
             return Err(format!(
-                "cannot parse the test case config [{}], invalid toml format?",
-                &run_args.test_cfg,
+                "cannot parse the test case config [{}], error: {}?",
+                &run_args.test_cfg, e
             )
             .into())
         }
