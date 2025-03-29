@@ -27,8 +27,8 @@ pub fn prepare_sample_files() -> (String, String) {
     }
 
     {
-        let mut test_case: String = r#"concurrences = [
-{ tests = ["test_rw_u32", "Test_str_fill"], serial = false, name = "group1" },
+        let test_case: String = r#"concurrences = [
+{ tests = ["test_rw_u32", "Test_str_fill"], name = "group1" },
 ]
 
 [[tests]]

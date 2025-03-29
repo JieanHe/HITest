@@ -20,7 +20,6 @@ pub struct Config {
 #[derive(Debug, Deserialize, Clone)]
 struct ConcurrencyGroup {
     tests: Vec<String>,
-    serial: bool,
     #[serde(default = "default_name")]
     name: String,
 }
@@ -139,59 +138,43 @@ impl ConcurrencyGroup {
             return true;
         }
         debug!(
-            "Concurrency Group {} Contains test cases: {:#?}, serial option: {}",
-            self.name, self.tests, self.serial
+            "Concurrency Group {} Contains test cases: {:#?}",
+            self.name, self.tests
         );
-        let mut succ: bool = true;
-        if self.serial {
-            for test in test_cases {
-                if test.run(lib_parser) {
-                    error!(
-                        "test case {} in concurrency {} serially execute failed!",
-                        test.name, self.name
-                    );
-                    return false;
-                }
-            }
+
+        // parallel with other test cases ignore source thread num
+        test_cases.par_iter_mut().for_each(|test| {
+            test.thread_num = 1;
+        });
+        let results: Vec<_> = test_cases
+            .into_par_iter()
+            .map(|test| test.run(lib_parser))
+            .collect();
+
+        let count = results.into_iter().filter(|&x| x).count();
+        debug!(
+            "Parallel execute concurrency Group {} with {} thread, {} passed!",
+            self.name,
+            self.tests.len(),
+            count
+        );
+
+        let succ = count as usize == self.tests.len();
+        if succ {
             info!(
-                "Serial execute concurrency Group {} with {} test cases, all passed!",
+                "Parallel execute concurrency Group {} with {} thread, all passed!",
                 self.name,
                 self.tests.len()
             );
         } else {
-            // parallel with other test cases ignore source thread num
-            test_cases.par_iter_mut().for_each(|test| {
-                test.thread_num = 1;
-            });
-            let results: Vec<_> = test_cases
-                .into_par_iter()
-                .map(|test| test.run(lib_parser))
-                .collect();
-
-            let count = results.into_iter().filter(|&x| x).count();
-            debug!(
+            error!(
                 "Parallel execute concurrency Group {} with {} thread, {} passed!",
                 self.name,
                 self.tests.len(),
                 count
             );
-
-            succ = count as usize == self.tests.len();
-            if succ {
-                info!(
-                    "Parallel execute concurrency Group {} with {} thread, all passed!",
-                    self.name,
-                    self.tests.len()
-                );
-            } else {
-                error!(
-                    "Parallel execute concurrency Group {} with {} thread, {} passed!",
-                    self.name,
-                    self.tests.len(),
-                    count
-                );
-            }
         }
+
         return succ;
     }
 }
@@ -383,7 +366,7 @@ mod tests {
     fn test_parse_config_with_concurrency() {
         let config_content = r#"
         concurrences = [
-            { tests = ["test_rw_u32", "Test_str_fill"], serial = false, name = "group1" },
+            { tests = ["test_rw_u32", "Test_str_fill"], name = "group1" },
             ]
 
         [[tests]]
