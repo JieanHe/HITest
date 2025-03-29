@@ -142,10 +142,6 @@ impl ConcurrencyGroup {
             self.name, self.tests
         );
 
-        // parallel with other test cases ignore source thread num
-        test_cases.par_iter_mut().for_each(|test| {
-            test.thread_num = 1;
-        });
         let results: Vec<_> = test_cases
             .into_par_iter()
             .map(|test| test.run(lib_parser))
