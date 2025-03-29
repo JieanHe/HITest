@@ -1,127 +1,125 @@
 # HITest
 
-#### 介绍
-hitest是一个通用的读配置文件调接口校验返回值的工具, 可用于SDK库、以及驱动程序的测试等。配置文件为toml格式，需两个配置文件（通过命令行参数提供）：
+### 介绍
+hitest是一个通用的读配置文件调接口校验返回值的工具。 与业务逻辑完全解耦，支持接口顺序调用，并发测试，死亡测试。
+可用于SDK库、以及驱动程序的测试等。只需SDK开发人员提供一个待测SDK的warrper动态库文件和此库文件的配置文件，以及测试人员按照
+配置文件的约定编写测试用例，即可使用hitest工具进行测试。
+
+配置文件为toml格式，需两个配置文件（通过命令行参数提供）：
 1. -l libs.toml: 指定库文件的路径和提供的所有函数。
 2. -t test_case.toml: 指定接口调用的顺序和参数。
 按顺序使用test_case.toml指定的参数和接口调用lib提供的接口并校验返回值。
 
-**注意** 接口全部为 `int (*func)(const long *params, int para_len);`的形式, 需要在libs.toml中指定parameter_len的最大长度(即所有库文件提供的所有函数中，parameters数组的最大长度，且library需保证每一个函数不会使用超过该长度的内存，否则会panic)**（例如： 当指定para_len=6时，库中的函数使用了params[6]则会panic）**
-
-#### 库
+**注意**
+- 接口全部为 `int (*func)(const long *params, int para_len);`的形式。 参见 sample/libmalloc.c 和 sample/export_function.h.
+- 如果库文件严格使用sample/export_function.h 中的宏来编写，可以使用scripts/gen_libs_config.py 来自动生成库文件配置文件。
+- 用法：python3 scripts/gen_libs_config.py -f sample/libmalloc.c -o sample/libmalloc.toml [-l ./sample]
+    - -l参数指定库文件的路径，默认为当前目录。
+    - -f 指定库函数定义的C文件
+    - -o 指定输出的配置文件路径。
+### 库文件编写
 库文件提供方需提供库的二进制文件和包含该二进制元信息的配置文件。库文件支持C/C++导出的*.so或者*.dll。
 - **二进制文件**
 
-    二进制中将需要调的接口封装成`int (*func)(const long *parameters, int parameter_len ); `的形式。建议parameters里面存放资源的位置（例如数组下标），来与测试用例通信，以及在多个接口之间传递资源等。
-
-    以一个封装了libc的malloc、free的库libmalloc举例：
-    ```C
-    // libmalloc.c
-    static uint64_t ADDR_ARR[MAX_ARR_LEN] = {0};
-    int my_malloc(const long *params, int params_len)
-    {
-        long len = params[0];
-        long out_idx = params[1];
-        void *addr = malloc(len);
-        if (!addr)
-            return -22;
-
-        ADDR_ARR[out_idx] = (uint64_t)addr;
-        return 0;
-    }
-
-    int my_free(const long *params, int params_len)
-    {
-        long in_idx = params[0];
-        if (ADDR_ARR[in_idx] == 0)
-        {
-            printf("invalid input idx %d\n", in_idx);
-            return -12;
-        }
-
-        free((void *)ADDR_ARR[in_idx]);
-        ADDR_ARR[in_idx] = 0;
-        return 0;
-    }
-    ```
+二进制中将需要调的接口封装成`int *(func_name)(uint64_t *param_page, const uint64_t *params, int params_len) `的形式。
+- param_page是测试程序预先分配的一个本线程独占的内存页，用于多个接口之间通信。
+- params是测试程序提供的参数数组，一般是：
+    - 魔鬼数字， 比如长度、param_page的dword索引等。
+    - 字符串地址，当测试用例的参数使用 ''包裹时，测试程序会将字符串写入该地址。
+- params_len是测试用例提供的参数的数量，库文件编写人员可以使用此长度对测试用例的合法性做一个简单校验。
+SDK 库warrper的编写参见sample/libmalloc.c， 这是一个简单的libc warrper库，提供了一些常用的内存管理函数。
 
 **注意** 如果库文件依赖了其他库文件，则编译库文件时必须显式指明依赖（如gcc 编译必须使用-lotherlib），例如：
 假设库文件liba.so依赖了libb.so，则编译liba.so时需要使用-lb。
 
-- **配置文件** 
-    配置文件需指明： 
-    1. para_len: 最多参数数量,所用库文件共用，**库本身需保证不会使用超出para_len个params的元素。（例如： 当指定para_len=6时，库中的函数使用了paras[6]则会panic）**
-    2. 库文的具体信息，包括文件路径和所有导出函数以及参数数组中各个元素的含义。
-    其中配置文件需要为可以直接解析出如下数据结构的toml文件：
-        ```Rust
-        struct LibFunc {
-            name: String,
-            paras: Vec<String>,
-        }
 
-        struct Lib {
-            path: String,
-            funcs: Vec<LibFunc>,
-        }
+测试用例编写方需提供测试用例的配置文件和测试用例的二进制文件。
+- **二进制文件**
+    二进制文件需包含测试用例的入口函数，该函数的原型为：`int test_main(const char *config_path)`。
 
-        struct LibConfig {
-            libs: Vec<Lib>,
-        }
-        ```
-
-        例如libmalloc的配置文件应该为：
-        ```toml
-        para_len = 2           
-        [[libs]]
-        path = "./libmalloc.dll"
-        funcs = [
-            { name = "my_malloc", paras = ["len", "mem_idx"] }, # 库文件内， params[0]为len， params[1]为mem_idx，
-            { name = "my_free", paras = ["mem_idx"] }, # 库文件内，params[0]为mem_idx
-            ， # 其他函数
-        ]
-        # 其他库文件
-        # [[libs]]
-        # path = "other_path"
-        # funcs = [ ... ]
-        ```
+- **配置文件**
+    配置文件需指明：
+    1. warrper库的二进制文件路径。
+    2. 二进制库所有导出函数的信息，包括函数名、参数数组中各个参数的名字。
+    **注意** 参数数组中各个参数的名字必须按照参数的顺序依次给出，并且不能有重复的名字。
+    并且含义需与测试用例编写人员约定一致。测试用例需要严格按照参数列表的参数名字提供调用函数的参数。
+    可以运行 `hitest --sample` 之后，在sample目录下查看libmalloc.toml的内容。
 
 #### 用例
 用例需按照业务逻辑，以及与库约定的参数含义，指明调用库文件接口的顺序和参数，并指明期望的接口返回值。
 配置文件需要是可以直接解析出如下数据结构的toml文件：
-
-```Rust
-struct Cmd {
-    opfunc: String,
-    expect_res: i32,
-    args: Vec<String>,
-}
-struct Test {
-    name: String,
-    cmds: Vec<Cmd>,
-}
-struct Config {
-    tests: Vec<Test>,
-}
-```
-
-用例通过opfunc指定调用的接口，params字段指定参数。其中，参数需要为"param_name=param_value"的形式。例如：
+1. 普通测试用例，指明用例名称和需要调用的接口列表，以及调用每一个接口使用的参数列，预期相等的返回值或者预期不等的返回值。如：
 ```toml
 [[tests]]
-name = "Test_Case_1"
+name = "test_rw_u32"
 cmds = [
-    { opfunc = "my_malloc", expect_res = 0, args = ["len=4", "mem_idx=1"] }, # 申请4bytes内存，首地址存入mem_idx=1的数组，预期返回0代表成功
-    { opfunc = "my_free", expect_res = 0, args = ["mem_idx=1"] } # 从mem_idx=1处取出一个地址，释放该地址对应内存，预期返回0代表成功
-]
-
-[[tests]]
-name = "Test_Case_2"
-cmds = [
-    { opfunc = "my_malloc", expect_res = 0, args = ["len=100", "mem_idx=2"] }, # 申请100bytes内存，首地址存入mem_idx=2的数组，预期返回0代表成功
-    { opfunc = "my_free", expect_res = -12, args = ["mem_idx=5"] }  # 从mem_idx=5处取出一个地址，释放该地址，预期返回-12代表失败
-    { opfunc = "my_free", expect_res = 0, args = ["mem_idx=1"] }  # 从mem_idx=1处取出一个地址，释放该地址，预期返回0代表成功
+{ opfunc = "Call_malloc", expect_eq = 0, args = ["len=100", "mem_idx=1"] },
+{ opfunc = "Call_write32", expect_eq = 0, args = ["addr_idx=1",  "val=888"] },
+{ opfunc = "Call_read32", expect_eq = 888, args = ["addr_idx=1", ] },
+{ opfunc = "Call_write32", expect_eq = 0, args = ["addr_idx=1",  "val=444"] },
+{ opfunc = "Call_read32", expect_eq = 444, args = ["addr_idx=1", ] },
+{ opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=1"] },
 ]
 ```
+一个用例内的cmds之间串行执行，可以通过参数break_if_fail来控制是否在失败时退出用例。
+由于SDK时长涉及资源管理，容易导致程序崩溃，默认是子命令失败时直接退出用例。
+也可以指定失败不退出，如下面的用例在Call_read32失败时会继续执行后面的用例：
+```toml
+[[tests]]
+name = "test_rw_u32"
+break_if_fail = false
+cmds = [
+{ opfunc = "Call_malloc", expect_eq = 0, args = ["len=100", "mem_idx=1"] },
+{ opfunc = "Call_write32", expect_eq = 0, args = ["addr_idx=1",  "val=888"] },
+# expect 444, but get 888, and break_if_fail == false, so will not break the test case
+{ opfunc = "Call_read32", expect_eq = 444, args = ["addr_idx=1", ] },
+{ opfunc = "Call_write32", expect_eq = 0, args = ["addr_idx=1",  "val=444"] },
+{ opfunc = "Call_read32", expect_eq = 444, args = ["addr_idx=1", ] },
+{ opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=1"] },
+]
+```
+2. 并发测试用例，支持两种模式，一种是同一个用例指定并发数，另一种是指定不同的测试用例之间并发。
 
+    1. 用一个test并发，在test下指定thread_num参数即可，如：
+    ```toml
+    [[tests]]
+    name = "test_rw_u32"
+    thread_num = 100
+    cmds = [
+    { opfunc = "Call_malloc", expect_eq = 0, args = ["len=100", "mem_idx=1"] },
+    { opfunc = "Call_write32", expect_eq = 0, args = ["addr_idx=1",  "val=888"] },
+    { opfunc = "Call_read32", expect_eq = 888, args = ["addr_idx=1", ] },
+    { opfunc = "Call_write32", expect_eq = 0, args = ["addr_idx=1",  "val=444"] },
+    { opfunc = "Call_read32", expect_eq = 444, args = ["addr_idx=1", ] },
+    { opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=1"] },
+    ]
+    ```
+    执行时将以100个线程并发执行test_rw_u32用例。
+
+    2. 不同的Test之间并发，新增concurrences参数，指定并发的用例列表，如：
+    ```toml
+    concurrences = [
+    { tests = ["test_rw_u32", "Test_str_fill"], name = "group1" },
+    ]
+    ```
+    执行时将以不同的线程并发执行test_rw_u32和Test_str_fill用例, 注意，这里的用例名称必须与tests下的用例名称一致。
+
+3. 死亡测试
+    死亡测试用例，用于测试程序的崩溃情况，可以指定should_panic参数，当should_panic=true时，测试用例将被认为是一个死亡测试用例，
+    会将测试用例单独放入子进程执行 ，如果子进程崩溃，则认为测试用例通过。
+    如：
+    ```toml
+    [[tests]]
+    name = "test_rw_u32"
+    should_panic = true
+    cmds = [
+    { opfunc = "Call_malloc", expect_eq = 0, args = ["len=100", "mem_idx=1"] },
+    { opfunc = "Call_write32", expect_eq = 0, args = ["addr_idx=1",  "val=888"] },
+    { opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=1"] },
+    # use after free, it will panic here
+    { opfunc = "Call_read32", expect_eq = 888, args = ["addr_idx=1", ] },
+    ]
+    ```
 #### 使用说明
 可以安装rust后重新编译运行，也可以直接使用构建好的二进制直接运行。
 
