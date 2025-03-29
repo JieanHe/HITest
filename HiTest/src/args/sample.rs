@@ -10,7 +10,8 @@ pub fn prepare_sample_files() -> (String, String) {
 
     {
         // 使用Python脚本生成lib配置
-        let status = Command::new("python")
+        let python_cmd = if cfg!(target_os = "windows") { "python" } else { "python3" };
+        let status = Command::new(python_cmd)
             .arg("scripts/generate_config.py")
             .arg("-f")
             .arg("./sample/libmalloc.c")

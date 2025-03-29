@@ -50,7 +50,7 @@ def parse_export_funcs(source_path: str) -> list:
 
     return configs
 
-def generate_toml(configs: list, output_path: str, file_name: str):
+def generate_toml(configs: list, output_path: str, file_name: str, lib_dir: str = None):
     """Generate TOML configuration with proper string quoting."""
     doc = tomlkit.document()
 
@@ -60,9 +60,14 @@ def generate_toml(configs: list, output_path: str, file_name: str):
         "win32": ".dll",
         "darwin": ".dylib"
     }.get(sys.platform, ".so")
-    lib_name = f"lib{file_name}{lib_ext}" if sys.platform != "win32" else f"{file_name}.dll"
-    libs.add("path", lib_name)
 
+
+    lib_name = f"{file_name}{lib_ext}" if sys.platform == "win32" else f"lib{file_name}{lib_ext}"
+
+    if lib_dir:
+        lib_name = f"{lib_dir}/{lib_name}"
+    libs.add("path", lib_name)
+    print(f'auto set lib path as {lib_name}')
     # Build functions array with parameters
     funcs = tomlkit.array()
     for cfg in configs:
@@ -94,9 +99,6 @@ if __name__ == "__main__":
     configs = parse_export_funcs(args.file)
 
     # 如果有指定库目录，修改路径格式
-    lib_path = Path(args.file).stem
-    if args.libdir:
-        lib_path = f"{args.libdir}/{lib_path}"
-
-    generate_toml(configs, args.output, lib_path)
+    file_name = Path(args.file).stem
+    generate_toml(configs, args.output, file_name, args.libdir)
     print(f"Generated {len(configs)} function configurations to {args.output}")

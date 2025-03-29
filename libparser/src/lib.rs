@@ -184,7 +184,7 @@ pub fn compile_lib(file: PathBuf) {
         .unwrap();
 
     let target = if cfg!(unix) {
-        format!("{}.so", file_name)
+        format!("lib{}.so", file_name)
     } else if cfg!(windows) {
         format!("{}.dll", file_name)
     } else {
