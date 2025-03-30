@@ -36,12 +36,12 @@ pub fn prepare_sample_files() -> (String, String) {
 name = "test_rw_u32"
 thread_num=2
 cmds = [
-{ opfunc = "Call_malloc", expect_eq = 0, args = ["len=100", "mem_idx=1"] },
-{ opfunc = "Call_write32", expect_eq = 0, args = ["addr_idx=1",  "val=888"] },
-{ opfunc = "Call_read32", expect_eq = 888, args = ["addr_idx=1", ] },
-{ opfunc = "Call_write32", expect_eq = 0, args = ["addr_idx=1",  "val=444"] },
-{ opfunc = "Call_read32", expect_eq = 444, args = ["addr_idx=1", ] },
-{ opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=1"] },
+{ opfunc = "Call_malloc", expect_eq = 0, perf=true, args = ["len=100", "mem_idx=1"] },
+{ opfunc = "Call_write32", expect_eq = 0, perf=true, args = ["addr_idx=1",  "val=888"] },
+{ opfunc = "Call_read32", expect_eq = 888, perf=true, args = ["addr_idx=1", ] },
+{ opfunc = "Call_write32", expect_eq = 0, perf=true, args = ["addr_idx=1",  "val=444"] },
+{ opfunc = "Call_read32", expect_eq = 444, perf=true, args = ["addr_idx=1", ] },
+{ opfunc = "Call_free", expect_eq = 0, perf=true, args = ["mem_idx=1"] },
 ]
 
 [[tests]]

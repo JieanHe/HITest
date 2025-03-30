@@ -58,6 +58,8 @@ pub struct Cmd {
     #[serde(flatten)]
     pub condition: Condition,
     pub args: Vec<String>,
+    #[serde(default)]
+    pub perf: Option<bool>,  // 新增性能统计开关
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -83,7 +85,7 @@ impl<'de> Deserialize<'de> for Condition {
             (Some(eq), None) => Ok(Condition::Eq(eq)),
             (None, Some(ne)) => Ok(Condition::Ne(ne)),
             (Some(_), Some(_)) => Err(D::Error::custom("mutually exclusive fields")),
-            (None, None) => Err(D::Error::custom("missing condition")),
+            (None, None) => Err(D::Error::custom("missing condition, please give 'expect_eq' or 'expect_ne'")),
         }
     }
 }
@@ -307,10 +309,23 @@ impl Cmd {
         fn_attr: &FnAttr,
         paras: &Vec<u64>,
     ) -> Result<bool, Box<dyn Error>> {
+
+        #[cfg(target_os = "linux")]
+        let start = high_precision_time();
+        #[cfg(not(target_os = "linux"))]
+        let start = std::time::Instant::now();
         let ret = match lib_parser.call_func_attr(fn_attr, paras) {
             Ok(r) => r,
             Err(e) => return Err(e),
         };
+        let duration = start.elapsed();
+
+        if self.perf.unwrap_or(false) {
+            info!(
+                "cmd '{}' executed cost {:?}",
+                self.opfunc, duration
+            );
+        }
 
         let (expected, operator, is_success) = match &self.condition {
             Condition::Eq(v) => (v, "==", ret == *v),
@@ -329,6 +344,17 @@ impl Cmd {
         }
 
         Ok(is_success)
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn high_precision_time() -> std::time::Duration {
+    use std::mem::MaybeUninit;
+    let mut ts = MaybeUninit::<libc::timespec>::uninit();
+    unsafe {
+        libc::clock_gettime(libc::CLOCK_MONOTONIC_RAW, ts.as_mut_ptr());
+        let ts = ts.assume_init();
+        std::time::Duration::new(ts.tv_sec as u64, ts.tv_nsec as u32)
     }
 }
 
