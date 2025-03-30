@@ -1,7 +1,7 @@
 use libparser::{FnAttr, LibParse};
 use log::{debug, error, info};
 #[cfg(unix)]
-use nix::{sys::wait::waitpid, sys::wait::WaitStatus, unistd::fork, unistd::ForkResult};
+use nix::{sys::wait::waitpid, sys::wait::WaitStatus, unistd::fork, unistd::ForkResult, libc};
 
 use rayon::prelude::*;
 use serde::{de::Error as DError, Deserialize, Deserializer};
@@ -314,17 +314,16 @@ impl Cmd {
         let start = high_precision_time();
         #[cfg(not(target_os = "linux"))]
         let start = std::time::Instant::now();
-        let ret = match lib_parser.call_func_attr(fn_attr, paras) {
-            Ok(r) => r,
-            Err(e) => return Err(e),
-        };
+
+        let ret = lib_parser.call_func_attr(fn_attr, paras)?;
+
+        #[cfg(target_os = "linux")]
+        let duration = high_precision_time() - start;  
+        #[cfg(not(target_os = "linux"))]
         let duration = start.elapsed();
 
         if self.perf.unwrap_or(false) {
-            info!(
-                "cmd '{}' executed cost {:?}",
-                self.opfunc, duration
-            );
+            info!("cmd '{}' executed cost {:?}", self.opfunc, duration);
         }
 
         let (expected, operator, is_success) = match &self.condition {
