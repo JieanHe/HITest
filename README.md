@@ -71,13 +71,15 @@ break_if_fail = false
 cmds = [
 { opfunc = "Call_malloc", expect_eq = 0, args = ["len=100", "mem_idx=1"] },
 { opfunc = "Call_write32", expect_eq = 0, args = ["addr_idx=1",  "val=888"] },
-# expect 444, but get 888, and break_if_fail == false, so will not break the test case
-{ opfunc = "Call_read32", expect_eq = 444, args = ["addr_idx=1", ] },
+# expect not equal to 888 but get 888, and break_if_fail == false, so will not break the test case
+{ opfunc = "Call_read32", expect_ne = 888, args = ["addr_idx=1", ] },
 { opfunc = "Call_write32", expect_eq = 0, args = ["addr_idx=1",  "val=444"] },
 { opfunc = "Call_read32", expect_eq = 444, args = ["addr_idx=1", ] },
 { opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=1"] },
 ]
 ```
+**注意**： expect_eq和expect_ne必须指定其中一个且不能同时指定。
+
 2. 并发测试用例，支持两种模式，一种是同一个用例指定并发数，另一种是指定不同的测试用例之间并发。
 
     1. 用一个test并发，在test下指定thread_num参数即可，如：
@@ -118,6 +120,19 @@ cmds = [
     { opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=1"] },
     # use after free, it will panic here
     { opfunc = "Call_read32", expect_eq = 888, args = ["addr_idx=1", ] },
+    ]
+    ```
+4. 性能测试
+    可以在cmds中需要统计性能的cmd内指定perf=true, 此时会报告该cmd的执行时间。
+    ```toml
+    [[tests]]
+    name = "test_rw_u32"
+    should_panic = true
+    cmds = [
+    { opfunc = "Call_malloc", expect_eq = 0, perf=true, args = ["len=100", "mem_idx=1"] },
+    { opfunc = "Call_write32", expect_eq = 0, perf=true, args = ["addr_idx=1",  "val=888"] },
+    { opfunc = "Call_read32", expect_eq = 888,  perf=true, args = ["addr_idx=1", ] },
+    { opfunc = "Call_free", expect_eq = 0, perf=true, args = ["mem_idx=1"] },
     ]
     ```
 #### 使用说明
