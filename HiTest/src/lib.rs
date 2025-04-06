@@ -50,6 +50,8 @@ struct InputGroup {
     #[serde(default = "default_input_name")]
     name: String,
     args: HashMap<String, String>,
+    should_panic: Option<bool>,
+    break_if_fail: Option<bool>,
 }
 
 fn default_false() -> bool {
@@ -216,7 +218,8 @@ impl Test {
         match unsafe { fork() } {
             Ok(ForkResult::Child) => {
                 child_test.thread_num = 1;
-                child_test.run_one_thread(lib_parser);
+                child_test.should_panic = false;
+                let res = child_test.run_one_thread(lib_parser);
                 exit(0);
             }
             Ok(ForkResult::Parent { child }) => {
@@ -258,79 +261,139 @@ impl Test {
     fn run_one_thread(&self, lib_parser: &LibParse) -> bool {
         let mut all_success = true;
 
-        let input_groups: Vec<(String, HashMap<String, String>)> = if self.inputs.is_empty() {
-            vec![("default".to_string(), HashMap::new())]
-        } else {
-            self.inputs.iter().map(|ig| (ig.name.clone(), ig.args.clone())).collect()
-        };
+        let input_groups: Vec<(String, HashMap<String, String>, Option<bool>, Option<bool>)> =
+            if self.inputs.is_empty() {
+                vec![(
+                    "default".to_string(),
+                    HashMap::new(),
+                    Some(false),
+                    Some(false),
+                )]
+            } else {
+                self.inputs
+                   .iter()
+                   .map(|ig| {
+                        (
+                            ig.name.clone(),
+                            ig.args.clone(),
+                            ig.should_panic,
+                            ig.break_if_fail,
+                        )
+                    })
+                   .collect()
+            };
 
-        for (input_name, input) in input_groups {
+        for (input_name, input, should_panic_opt, break_if_fail_opt) in input_groups {
+            let should_panic = should_panic_opt.unwrap_or(false);
+            let break_if_fail = break_if_fail_opt.unwrap_or(self.break_if_fail);
+
             let mut case_success = true;
             info!(
                 "Running test case '{}' with input group: {}",
                 self.name,
                 input_name
             );
-            let mut uses_input_args = false;
-            for cmd in self.cmds.clone() {
-                uses_input_args = cmd.args.iter().any(|arg| arg.contains('$'));
 
-                let resolved_args = cmd
-                    .args
-                    .iter()
-                    .map(|arg| {
-                        input.iter().fold(arg.clone(), |acc, (k, v)| {
-                            acc.replace(&format!("${}", k), v)
+            if should_panic {
+                // 复制 Test 实例
+                let mut new_test = self.clone();
+                new_test.should_panic = true;
+
+                // 替换 cmd 参数
+                new_test.cmds = new_test.cmds.iter().map(|cmd| {
+                    let resolved_args = cmd
+                       .args
+                       .iter()
+                       .map(|arg| {
+                            input.iter().fold(arg.clone(), |acc, (k, v)| {
+                                acc.replace(&format!("${}", k), v)
+                            })
                         })
-                    })
-                    .collect::<Vec<_>>();
-
-                let fn_attr = match lib_parser.get_func(&cmd.opfunc) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        error!("execute cmd {} failed! Error: {}\n", &cmd.opfunc, e);
-                        if uses_input_args {
-                            error!("Input group '{}' args: {:?}", input_name, input);
-                        }
-                        return false;
+                       .collect();
+                    Cmd {
+                        opfunc: cmd.opfunc.clone(),
+                        condition: cmd.condition.clone(),
+                        args: resolved_args,
+                        perf: cmd.perf,
                     }
-                };
-                let paras = match fn_attr.parse_params(&resolved_args) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        error!("execute cmd {} failed! Error: {}\n", &cmd.opfunc, e);
-                        if uses_input_args {
-                            error!("Input group '{}' args: {:?}", input_name, input);
-                        }
-                        return false;
-                    }
-                };
+                }).collect();
 
-                match cmd.run(&lib_parser, &fn_attr, &paras, &input) {
-                    Ok(v) => {
-                        if !v {
+                case_success = Test::check_panic(new_test, lib_parser);
+            } else {
+                for cmd in self.cmds.clone() {
+                    let uses_input_args = cmd.args.iter().any(|arg| arg.contains('$'));
+                    let resolved_args = cmd
+                       .args
+                       .iter()
+                       .map(|arg| {
+                            input.iter().fold(arg.clone(), |acc, (k, v)| {
+                                acc.replace(&format!("${}", k), v)
+                            })
+                        })
+                       .collect::<Vec<_>>();
+
+                    let fn_attr = match lib_parser.get_func(&cmd.opfunc) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            error!("execute cmd {} failed! Error: {}", &cmd.opfunc, e);
+                            if uses_input_args {
+                                error!("Input group '{}' args: {:?}", input_name, input);
+                            }
+                            if break_if_fail {
+                                case_success = false;
+                                break;
+                            }
                             case_success = false;
-                            if self.break_if_fail {
-                                error!(
-                                    "Test case {} stopped because cmd {} executing failed!\n",
-                                    self.name, &cmd.opfunc
-                                );
-                                if uses_input_args {
-                                    error!("Input group '{}' args: {:?}", input_name, input);
+                            continue;
+                        }
+                    };
+                    let paras = match fn_attr.parse_params(&resolved_args) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            error!("execute cmd {} failed! Error: {}", &cmd.opfunc, e);
+                            if uses_input_args {
+                                error!("Input group '{}' args: {:?}", input_name, input);
+                            }
+                            if break_if_fail {
+                                case_success = false;
+                                break;
+                            }
+                            case_success = false;
+                            continue;
+                        }
+                    };
+
+                    match cmd.run(&lib_parser, &fn_attr, &paras, &input) {
+                        Ok(v) => {
+                            if !v {
+                                case_success = false;
+                                if break_if_fail {
+                                    error!(
+                                        "Test case {} stopped because cmd {} executing failed!\n",
+                                        self.name, &cmd.opfunc
+                                    );
+                                    if uses_input_args {
+                                        error!("Input group '{}' args: {:?}", input_name, input);
+                                    }
+                                    break;
                                 }
-                                return false;
                             }
                         }
-                    }
-                    Err(e) => {
-                        error!("execute cmd {} failed! Error: {}\n", &cmd.opfunc, e);
-                        if uses_input_args {
-                            error!("Input group '{}' args: {:?}", input_name, input);
+                        Err(e) => {
+                            error!("execute cmd {} failed! Error: {}\n", &cmd.opfunc, e);
+                            if uses_input_args {
+                                error!("Input group '{}' args: {:?}", input_name, input);
+                            }
+                            if break_if_fail {
+                                case_success = false;
+                                break;
+                            }
+                            case_success = false;
                         }
-                        return false;
                     }
                 }
             }
+
             if case_success {
                 info!(
                     "Test case '{}' with input group '{}' succeeded",
@@ -343,9 +406,6 @@ impl Test {
                     self.name,
                     input_name
                 );
-                if uses_input_args {
-                    error!("Input group '{}' args: {:?}", input_name, input);
-                }
             }
             all_success = all_success && case_success;
         }

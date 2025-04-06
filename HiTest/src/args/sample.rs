@@ -113,10 +113,9 @@ cmds = [
 ]
 inputs = [
 { args = { len = "8192", prot = "7", flags = "5", val = "44564" } },  # 自动命名为default5
-{ args = { len = "81920", prot = "3", flags = "4", val = "13214" } },  # 自动命名为default1
-{ args = { len = "8192", prot = "1", flags = "4", val = "44564" } },  # 自动命名为default1fault3
+{ args = { len = "81920", prot = "3", flags = "4", val = "13214" } },  # 自动命名为default6
+{ should_panic = true, args = { len = "8192", prot = "1", flags = "4", val = "44564" } },  # 自动命名为default7
 ]
-
     "#;
         }
 
