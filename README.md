@@ -135,6 +135,29 @@ cmds = [
     { opfunc = "Call_free", expect_eq = 0, perf=true, args = ["mem_idx=1"] },
     ]
     ```
+
+5. 多组输入测试
+    可以在Test中新增通过inputs参数指定多组输入，并且在cmds中使用${para_name}来引用输入参数。
+    每一组参数可以指定多个输入参数，以及本组参数的组名用于报告执行结果， 不指定组名时，自动命名为default1, default2, ...
+    如：
+    ```toml
+    [[tests]]
+    name = "test_rw_u32"
+    thread_num=2
+    cmds = [
+    { opfunc = "Call_malloc", expect_eq = 0, perf=true, args = ["len=$alloc_size", "mem_idx=1"] },
+    { opfunc = "Call_write32", expect_eq = 0, perf=true, args = ["addr_idx=1", "val=$write_val"] },
+    { opfunc = "Call_read32", expect_eq = "$write_val", perf=true, args = ["addr_idx=1"] },
+    { opfunc = "Call_free", expect_eq = 0, perf=true, args = ["mem_idx=1"] },
+    ]
+    inputs = [
+    {name = "ipt1", args = { alloc_size = "100", write_val = "888" } },
+    { args = { alloc_size = "200", write_val = "999" } },   # 自动命名为default1
+    { args = { alloc_size = "50", write_val = "555" } }    # 自动命名为default2
+    ]
+    ```
+    **注意**： 需要与其他cmd进行通信的idx位置，最好在cmds中指定而不要放到inputs里面，否则你需要非常小心的保证idx的正确性，当cmds很多的时候这会变得不好维护。
+
 #### 使用说明
 可以安装rust后重新编译运行，也可以直接使用构建好的二进制直接运行。
 
