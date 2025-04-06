@@ -1,10 +1,11 @@
 use libparser::{FnAttr, LibParse};
 use log::{debug, error, info};
 #[cfg(unix)]
-use nix::{sys::wait::waitpid, sys::wait::WaitStatus, unistd::fork, unistd::ForkResult, libc};
+use nix::{libc, sys::wait::waitpid, sys::wait::WaitStatus, unistd::fork, unistd::ForkResult};
 
 use rayon::prelude::*;
 use serde::{de::Error as DError, Deserialize, Deserializer};
+use std::collections::HashMap;
 use std::error::Error;
 #[cfg(unix)]
 use std::process::exit;
@@ -34,6 +35,21 @@ struct Test {
     should_panic: bool,
     #[serde(default = "default_true")]
     break_if_fail: bool,
+    #[serde(default)]
+    inputs: Vec<InputGroup>,
+}
+
+fn default_input_name() -> String {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static COUNTER: AtomicUsize = AtomicUsize::new(1);
+    format!("default{}", COUNTER.fetch_add(1, Ordering::Relaxed))
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct InputGroup {
+    #[serde(default = "default_input_name")]
+    name: String,
+    args: HashMap<String, String>,
 }
 
 fn default_false() -> bool {
@@ -59,33 +75,49 @@ pub struct Cmd {
     pub condition: Condition,
     pub args: Vec<String>,
     #[serde(default)]
-    pub perf: Option<bool>,  // 新增性能统计开关
+    pub perf: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Condition {
-    Eq(i32),
-    Ne(i32),
+    Eq(String),
+    Ne(String),
 }
 
 impl<'de> Deserialize<'de> for Condition {
-    fn deserialize<D>(deserializer: D) -> Result<Self, <D as Deserializer<'de>>::Error>
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
         #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Value {
+            Number(i32),
+            String(String),
+        }
+
+        #[derive(Deserialize)]
         struct Helper {
-            expect_eq: Option<i32>,
-            expect_ne: Option<i32>,
+            expect_eq: Option<Value>,
+            expect_ne: Option<Value>,
         }
 
         let helper = Helper::deserialize(deserializer)?;
 
+        let to_string = |value: Value| -> String {
+            match value {
+                Value::Number(n) => n.to_string(),
+                Value::String(s) => s,
+            }
+        };
+
         match (helper.expect_eq, helper.expect_ne) {
-            (Some(eq), None) => Ok(Condition::Eq(eq)),
-            (None, Some(ne)) => Ok(Condition::Ne(ne)),
+            (Some(eq), None) => Ok(Condition::Eq(to_string(eq))),
+            (None, Some(ne)) => Ok(Condition::Ne(to_string(ne))),
             (Some(_), Some(_)) => Err(D::Error::custom("mutually exclusive fields")),
-            (None, None) => Err(D::Error::custom("missing condition, please give 'expect_eq' or 'expect_ne'")),
+            (None, None) => Err(D::Error::custom(
+                "missing condition, please give 'expect_eq' or 'expect_ne'",
+            )),
         }
     }
 }
@@ -225,44 +257,86 @@ impl Test {
     }
 
     fn run_one_thread(&self, lib_parser: &LibParse) -> bool {
-        let mut res = true;
-        for cmd in self.cmds.clone() {
-            let fn_attr = match lib_parser.get_func(&cmd.opfunc) {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("execute cmd {} failed! Error: {}\n", &cmd.opfunc, e);
-                    return false;
-                }
-            };
-            let paras = match fn_attr.parse_params(&cmd.args) {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("execute cmd {} failed! Error: {}\n", &cmd.opfunc, e);
-                    return false;
-                }
-            };
+        let mut all_success = true;
 
-            match cmd.run(&lib_parser, &fn_attr, &paras) {
-                Ok(v) => {
-                    if !v {
-                        res = false;
-                        if self.break_if_fail {
-                            error!(
-                                "Test case {} stopped because cmd {} executing failed!\n",
-                                self.name, &cmd.opfunc
-                            );
-                            return false;
+        // 处理无inputs的默认情况
+        let input_groups: Vec<(String, HashMap<String, String>)> = if self.inputs.is_empty() {
+            vec![("deafault".to_string(), HashMap::new())]
+        } else {
+            self.inputs.iter().map(|ig| (ig.name.clone(), ig.args.clone())).collect()
+        };
+
+        for (input_name, input) in input_groups {
+            let mut case_success = true;
+            info!(
+                "Running test case '{}' with input group: {}",
+                self.name,
+                input_name
+            );
+
+            for cmd in self.cmds.clone() {
+                // 执行参数替换
+                let resolved_args = cmd
+                    .args
+                    .iter()
+                    .map(|arg| {
+                        input.iter().fold(arg.clone(), |acc, (k, v)| {
+                            acc.replace(&format!("${}", k), v)
+                        })
+                    })
+                    .collect::<Vec<_>>();
+
+                let fn_attr = match lib_parser.get_func(&cmd.opfunc) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!("execute cmd {} failed! Error: {}\n", &cmd.opfunc, e);
+                        return false;
+                    }
+                };
+                let paras = match fn_attr.parse_params(&resolved_args) {
+                    // 使用替换后的参数
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!("execute cmd {} failed! Error: {}\n", &cmd.opfunc, e);
+                        return false;
+                    }
+                };
+
+                match cmd.run(&lib_parser, &fn_attr, &paras, &input) { // 添加input_vars参数
+                    Ok(v) => {
+                        if !v {
+                            case_success = false;
+                            if self.break_if_fail {
+                                error!(
+                                    "Test case {} stopped because cmd {} executing failed!\n",
+                                    self.name, &cmd.opfunc
+                                );
+                                return false;
+                            }
                         }
                     }
-                }
-                Err(e) => {
-                    error!("execute cmd {} failed! Error: {}\n", &cmd.opfunc, e);
-                    return false;
+                    Err(e) => {
+                        error!("execute cmd {} failed! Error: {}\n", &cmd.opfunc, e);
+                        return false;
+                    }
                 }
             }
+            if case_success {
+                info!(
+                    "Test case '{}' with input group '{}' succeeded",
+                    self.name,
+                    input_name
+                );
+            } else {
+                error!(
+                    "Test case '{}' with input group '{}' failed",
+                    self.name,
+                    input_name
+                );
+            }
+            all_success = all_success && case_success;
         }
-
-        res
+        all_success
     }
 
     fn run(&self, lib_parser: &LibParse) -> bool {
@@ -276,15 +350,12 @@ impl Test {
         }
 
         let results: Vec<_> = (0..self.thread_num)
-            .into_par_iter() // rayon parallel
+            .into_par_iter()
             .map(|_| self.run_one_thread(lib_parser))
             .collect();
+
         debug!("results: {:#?}", results);
         let count = results.into_iter().filter(|&x| x).count();
-        debug!(
-            "run test case {} with {} thread, {} passed!",
-            self.name, self.thread_num, count
-        );
 
         let succ = count as i32 == self.thread_num;
         if succ {
@@ -308,8 +379,8 @@ impl Cmd {
         lib_parser: &LibParse,
         fn_attr: &FnAttr,
         paras: &Vec<u64>,
+        input_vars: &HashMap<String, String>, // 新增输入参数
     ) -> Result<bool, Box<dyn Error>> {
-
         #[cfg(target_os = "linux")]
         let start = high_precision_time();
         #[cfg(not(target_os = "linux"))]
@@ -318,7 +389,7 @@ impl Cmd {
         let ret = lib_parser.call_func_attr(fn_attr, paras)?;
 
         #[cfg(target_os = "linux")]
-        let duration = high_precision_time() - start;  
+        let duration = high_precision_time() - start;
         #[cfg(not(target_os = "linux"))]
         let duration = start.elapsed();
 
@@ -327,8 +398,16 @@ impl Cmd {
         }
 
         let (expected, operator, is_success) = match &self.condition {
-            Condition::Eq(v) => (v, "==", ret == *v),
-            Condition::Ne(v) => (v, "!=", ret != *v),
+            Condition::Eq(v) => {
+                let resolved = replace_vars(v.to_string(), input_vars);
+                let expected = resolved.parse::<i32>()?;
+                (expected, "==", ret == expected)
+            },
+            Condition::Ne(v) => {
+                let resolved = replace_vars(v.to_string(), input_vars);
+                let expected = resolved.parse::<i32>()?;
+                (expected, "!=", ret != expected)
+            },
         };
 
         let message = format!(
@@ -355,6 +434,12 @@ fn high_precision_time() -> std::time::Duration {
         let ts = ts.assume_init();
         std::time::Duration::new(ts.tv_sec as u64, ts.tv_nsec as u32)
     }
+}
+
+fn replace_vars(s: String, vars: &HashMap<String, String>) -> String {
+    vars.iter().fold(s, |acc, (k, v)| {
+        acc.replace(&format!("${}", k), v)
+    })
 }
 
 #[cfg(test)]
