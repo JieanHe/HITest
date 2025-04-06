@@ -28,7 +28,7 @@ pub fn prepare_sample_files() -> (String, String) {
     }
 
     {
-        let test_case: String = r#"concurrences = [
+        let mut test_case: String = r#"concurrences = [
 { tests = ["test_rw_u32", "Test_str_fill"], name = "group1" },
 ]
 
@@ -82,6 +82,43 @@ cmds = [
 { opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=2"] }
 ]"#
         .to_string();
+        
+
+        #[cfg(unix)]
+        {
+            test_case += r#"
+
+[[tests]]
+name = "test_dev_mem_page"
+thread_num=1
+cmds = [
+{ opfunc = "Call_open", expect_eq = 0, args = ["pathname='/dev/mem'", "fd_idx=8"] },
+{ opfunc = "Call_mmap", expect_eq = 0, args = ["addr=0", "len=4096", "prot=3", "flags=5", "fd_idx=8", "offset=0", "addr_idx=11"] },
+{ opfunc = "Call_write64", expect_eq = 0, args = ["addr_idx=11", "val=123456789"] },
+{ opfunc = "Call_read64", expect_eq = 123456789, args = ["addr_idx=11"] },
+{ opfunc = "Call_munmap", expect_eq = 0, args = ["addr_idx=11", "len=4096"] },
+{ opfunc = "Call_close", expect_eq = 0, args = ["fd_idx=8"] },
+]
+
+[[tests]]
+name = "test_dev_mem_page"
+thread_num=1
+cmds = [
+{ opfunc = "Call_open", expect_eq = 0, args = ["pathname='/dev/mem'", "fd_idx=8"] },
+{ opfunc = "Call_mmap", expect_eq = 0, args = ["addr=0", "len=$len", "prot=$prot", "flags=$flags", "fd_idx=8", "offset=0", "addr_idx=11"] },
+{ opfunc = "Call_write64", expect_eq = 0, args = ["addr_idx=11", "val=$val"] },
+{ opfunc = "Call_read64", expect_eq = "$val", args = ["addr_idx=11"] },
+{ opfunc = "Call_munmap", expect_eq = 0, args = ["addr_idx=11", "len=$len"] },
+{ opfunc = "Call_close", expect_eq = 0, args = ["fd_idx=8"] },
+]
+inputs = [
+{ args = { len = "8192", prot = "7", flags = "5", val = "44564" } },  # 自动命名为default5
+{ args = { len = "81920", prot = "3", flags = "4", val = "13214" } },  # 自动命名为default1
+{ args = { len = "8192", prot = "1", flags = "4", val = "44564" } },  # 自动命名为default1fault3
+]
+
+    "#;
+        }
 
         let mut file = File::create(SAMPLE_TEST_CFG).unwrap();
         let _ = file.write_all(test_case.as_bytes());

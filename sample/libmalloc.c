@@ -143,3 +143,113 @@ EXPORT_FUNC(strfill, dst_addr, content, len)
     strncpy(dst_addr, content, len);
     return 0;
 }
+
+EXPORT_FUNC(read64, addr_idx)
+{
+    CHECK_PARAM_LEN(1);
+    IN_RELATIVE_IDX(uint64_t *, addr_idx, 0);
+
+    return *addr_idx;
+}
+
+EXPORT_FUNC(write64, addr_idx, val)
+{
+    CHECK_PARAM_LEN(2);
+
+    IN_RELATIVE_IDX(uint64_t *, addr_idx, 0);
+    IN_VALUE(uint64_t, val, 1);
+
+    *addr_idx = val;
+    return 0;
+}
+
+#if defined(__linux__)
+#include <sys/mman.h>
+#include <fcntl.h>
+#include <unistd.h>
+#define BIT(x) (1ULL << (x))
+EXPORT_FUNC(open, pathname,  fd_idx)
+{
+    CHECK_PARAM_LEN(2);
+    IN_VALUE(const char *, pathname, 0);
+    IN_ABSOLUTE_IDX(int, fd_idx, 1);
+
+    int fd = open(pathname, O_RDWR);
+    if (fd == -1)
+    {
+        fprintf(stderr, "[%s] open failed! errno: %d\n", __func__, errno);
+        return -1;
+    }
+    OUT_ABSOLUTE_IDX(fd_idx, (uint64_t)fd);
+    return 0;
+}
+
+EXPORT_FUNC(close, fd_idx)
+{
+    CHECK_PARAM_LEN(1);
+    IN_RELATIVE_IDX(int, fd, 0);
+
+    if (close(fd) == -1)
+    {
+        fprintf(stderr, "[%s] close failed! errno: %d\n", __func__, errno);
+        return -1;
+    }
+    return 0;
+}
+
+EXPORT_FUNC(mmap, addr, len, prot, flags, fd_idx, offset, addr_idx)
+{
+    CHECK_PARAM_LEN(7);
+    IN_VALUE(void *, addr, 0);
+    IN_VALUE(size_t, len, 1);
+    IN_VALUE(int, iprot, 2);
+    IN_VALUE(int, iflags, 3);
+    IN_RELATIVE_IDX(int, fd, 4);
+    IN_VALUE(off_t, offset, 5);
+    IN_ABSOLUTE_IDX(uint64_t, addr_idx, 6);
+
+    int flags = 0;
+    int prot = 0;
+    if (iprot & BIT(0)) {
+        prot |= PROT_READ;
+    } 
+    if (iprot & BIT(1)) {
+        prot |= PROT_WRITE;
+    }
+
+    if (iflags & BIT(0)) {
+        flags |= MAP_SHARED;
+    } else {
+        flags |= MAP_PRIVATE;
+    }
+
+    if (iflags & BIT(1)) {
+        flags |= MAP_FIXED;    
+    }
+
+    if (iflags & BIT(2)) {
+        flags |= MAP_ANONYMOUS;
+    }
+
+    void *mapped_addr = mmap(addr, len, prot, flags, fd, offset);
+    if (mapped_addr == NULL)
+    {
+        fprintf(stderr, "[%s] mmap failed! err: %s(%d)\n", __func__, strerror(errno), errno);
+        return -1;
+    }
+    OUT_ABSOLUTE_IDX(addr_idx, (uint64_t)mapped_addr);
+    return 0;
+}
+
+EXPORT_FUNC(munmap, addr_idx, len)
+{
+    CHECK_PARAM_LEN(2);
+    IN_RELATIVE_IDX(void *, addr, 0);
+    IN_VALUE(size_t, length, 1);
+    if (munmap(addr, length) == -1)
+    {
+        fprintf(stderr, "[%s] munmap failed! errno: %d\n", __func__, errno);
+    }
+    return 0;
+}
+#endif

@@ -259,7 +259,7 @@ impl Test {
         let mut all_success = true;
 
         let input_groups: Vec<(String, HashMap<String, String>)> = if self.inputs.is_empty() {
-            vec![("deafault".to_string(), HashMap::new())]
+            vec![("default".to_string(), HashMap::new())]
         } else {
             self.inputs.iter().map(|ig| (ig.name.clone(), ig.args.clone())).collect()
         };
@@ -271,8 +271,10 @@ impl Test {
                 self.name,
                 input_name
             );
-
+            let mut uses_input_args = false;
             for cmd in self.cmds.clone() {
+                uses_input_args = cmd.args.iter().any(|arg| arg.contains('$'));
+
                 let resolved_args = cmd
                     .args
                     .iter()
@@ -287,6 +289,9 @@ impl Test {
                     Ok(v) => v,
                     Err(e) => {
                         error!("execute cmd {} failed! Error: {}\n", &cmd.opfunc, e);
+                        if uses_input_args {
+                            error!("Input group '{}' args: {:?}", input_name, input);
+                        }
                         return false;
                     }
                 };
@@ -294,6 +299,9 @@ impl Test {
                     Ok(v) => v,
                     Err(e) => {
                         error!("execute cmd {} failed! Error: {}\n", &cmd.opfunc, e);
+                        if uses_input_args {
+                            error!("Input group '{}' args: {:?}", input_name, input);
+                        }
                         return false;
                     }
                 };
@@ -307,12 +315,18 @@ impl Test {
                                     "Test case {} stopped because cmd {} executing failed!\n",
                                     self.name, &cmd.opfunc
                                 );
+                                if uses_input_args {
+                                    error!("Input group '{}' args: {:?}", input_name, input);
+                                }
                                 return false;
                             }
                         }
                     }
                     Err(e) => {
                         error!("execute cmd {} failed! Error: {}\n", &cmd.opfunc, e);
+                        if uses_input_args {
+                            error!("Input group '{}' args: {:?}", input_name, input);
+                        }
                         return false;
                     }
                 }
@@ -329,6 +343,9 @@ impl Test {
                     self.name,
                     input_name
                 );
+                if uses_input_args {
+                    error!("Input group '{}' args: {:?}", input_name, input);
+                }
             }
             all_success = all_success && case_success;
         }
