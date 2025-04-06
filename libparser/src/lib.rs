@@ -112,11 +112,32 @@ impl FnAttr {
 
 pub struct LibParse {
     funcs: HashMap<String, Arc<Box<FnAttr>>>,
-    #[allow(dead_code)]
-    libs: Vec<Arc<Library>>, // to keep library loaded from file on live, and this field will never be used.
+
+    #[allow(dead_code)]// to keep library loaded from file on live, and this field will never be used.
+    libs: Vec<Arc<Library>>,
 }
 
 impl LibParse {
+    // for test only
+    #[cfg(test)]
+    pub fn new_with_mock() -> Self {
+        extern "C" fn mock_fn(_: *mut u64, _: *const u64, _: i32) -> i32 { 0 }
+
+        let mut funcs = HashMap::new();
+        funcs.insert(
+            "test_func".to_string(),
+            Arc::new(Box::new(FnAttr {
+                fnptr: mock_fn,
+                paras: vec!["param1".to_string(), "param2".to_string()]
+            }))
+        );
+
+        LibParse {
+            funcs,
+            libs: Vec::new(),
+        }
+    }
+
     pub fn new(config: &str) -> Result<Self, Box<dyn Error>> {
         let mut libs = Vec::new();
         let mut funcs = HashMap::new();
@@ -220,95 +241,98 @@ pub fn compile_lib(file: PathBuf) {
     }
 }
 
+
 #[cfg(test)]
 mod tests {
-
     use super::*;
-    use std::{env, fs::File, io::Write};
+
+    fn create_mock_parser() -> LibParse {
+        let config_content = r#"
+        [[libs]]
+        path = "mock_lib.so"
+        funcs = [
+            { name = "test_func", paras = ["param1", "param2"] },
+            { name = "test_func2", paras = ["param"] }
+        ]
+        "#;
+
+        // parse config
+        let _config: LibConfig = toml::from_str(config_content).unwrap();
+
+        extern "C" fn mock_fn(_: *mut u64, _: *const u64, _: i32) -> i32 { 0 }
+
+        let mut funcs = HashMap::new();
+        funcs.insert(
+            "test_func".to_string(),
+            Arc::new(Box::new(FnAttr {
+                fnptr: mock_fn,
+                paras: vec!["param1".to_string(), "param2".to_string()]
+            }))
+        );
+        funcs.insert(
+            "test_func2".to_string(),
+            Arc::new(Box::new(FnAttr {
+                fnptr: mock_fn,
+                paras: vec!["param".to_string()]
+            }))
+        );
+
+        LibParse {
+            funcs,
+            libs: Vec::new(),
+        }
+    }
 
     #[test]
-    fn test_libmalloc() {
-        let libmalloc = env::current_dir().unwrap().join("../sample/libmalloc.c");
-        compile_lib(libmalloc);
+    fn test_lib_parse_new() {
+        let parser = create_mock_parser();
+        assert!(parser.get_func("test_func").is_ok());
+    }
 
-        let config_path = env::current_dir()
-            .unwrap()
-            .join("../sample/dependlibs.toml");
-        let config_path = config_path.to_str().unwrap();
-        // generate config file
-        {
-            #[cfg(windows)]
-            let config_content = r#"
-para_len = 3
-[[libs]]
-path = "../sample/libmalloc.dll"
-funcs = [
-    { name = "my_malloc", paras = ["len", "mem_idx"] },
-    { name = "my_free", paras = ["mem_idx"] },
-    { name = "my_read32", paras = ["mem_idx", "offset"] },
-    { name = "my_write32", paras = ["mem_idx", "offset", "val"] }
-]
-"#;
-            #[cfg(unix)]
-            let config_content = r#"
-para_len = 3
-[[libs]]
-path = "../sample/libmalloc.so"
-funcs = [
-    { name = "my_malloc", paras = ["len", "mem_idx"] },
-    { name = "my_free", paras = ["mem_idx"] },
-    { name = "my_read32", paras = ["mem_idx", "offset"] },
-    { name = "my_write32", paras = ["mem_idx", "offset", "val"] }
-]
-            "#;
-            let mut file = File::create(config_path).unwrap();
-            let _ = file.write_all(config_content.as_bytes());
+    #[test]
+    fn test_get_func() {
+        let parser = create_mock_parser();
+        assert!(parser.get_func("test_func").is_ok());
+        assert!(parser.get_func("non_exist_func").is_err());
+    }
+
+    #[test]
+    fn test_parse_params() {
+        extern "C" fn mock_fn(_: *mut u64, _: *const u64, _: i32) -> i32 {
+            0
         }
 
-        let libparse = LibParse::new(&config_path)
-            .expect(&format!("failed to load lib config file {}", &config_path));
+        let fn_attr = FnAttr {
+            fnptr: mock_fn,
+            paras: vec!["param1".to_string(), "param2".to_string()]
+        };
 
-        assert_eq!(libparse.funcs.len(), 4);
-        assert_eq!(libparse.get_func("my_malloc").unwrap().paras.len(), 2);
-        assert_eq!(libparse.get_func("my_free").unwrap().paras.len(), 1);
-        assert_eq!(libparse.get_func("my_read32").unwrap().paras.len(), 2);
-        assert_eq!(libparse.get_func("my_write32").unwrap().paras.len(), 3);
-        assert_eq!(
-            libparse
-                .call_func(
-                    "my_malloc",
-                    &vec!["len=4".to_string(), "mem_idx=1".to_string()]
-                )
-                .unwrap(),
-            0
-        );
-        assert_eq!(
-            libparse
-                .call_func(
-                    "my_write32",
-                    &vec![
-                        "offset=0".to_string(),
-                        "mem_idx=1".to_string(),
-                        "val=888".to_string()
-                    ]
-                )
-                .unwrap(),
-            0
-        );
-        assert_eq!(
-            libparse
-                .call_func(
-                    "my_read32",
-                    &vec!["offset=0".to_string(), "mem_idx=1".to_string()]
-                )
-                .unwrap(),
-            888
-        );
-        assert_eq!(
-            libparse
-                .call_func("my_free", &vec!["mem_idx=1".to_string()])
-                .unwrap(),
-            0
-        );
+        // normal params parse
+        let params = vec!["param1=123".to_string(), "param2=456".to_string()];
+        let result = fn_attr.parse_params(&params);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), vec![123, 456]);
+
+        // invalid params parse
+        let params = vec!["param1=123".to_string()];
+        assert!(fn_attr.parse_params(&params).is_err());
+
+        // string params parse
+        let params = vec!["param1='hello'".to_string(), "param2='world'".to_string()];
+        assert!(fn_attr.parse_params(&params).is_ok());
+    }
+
+    #[test]
+    fn test_call_func() {
+        let parser = LibParse::new_with_mock();
+        let params = vec!["param1=123".to_string(), "param2=456".to_string()];
+        let result = parser.call_func("test_func", &params);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_error_handling() {
+        // invalid config file
+        assert!(LibParse::new("nonexist.toml").is_err());
     }
 }

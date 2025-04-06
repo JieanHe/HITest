@@ -222,7 +222,6 @@ impl Test {
             Ok(ForkResult::Parent { child }) => {
                 let status = waitpid(child, None).expect("Waiting for child failed");
 
-                // 模式匹配处理退出状态
                 match status {
                     WaitStatus::Exited(_, code) => {
                         error!("child process exit as code {}.", code);
@@ -259,7 +258,6 @@ impl Test {
     fn run_one_thread(&self, lib_parser: &LibParse) -> bool {
         let mut all_success = true;
 
-        // 处理无inputs的默认情况
         let input_groups: Vec<(String, HashMap<String, String>)> = if self.inputs.is_empty() {
             vec![("deafault".to_string(), HashMap::new())]
         } else {
@@ -275,7 +273,6 @@ impl Test {
             );
 
             for cmd in self.cmds.clone() {
-                // 执行参数替换
                 let resolved_args = cmd
                     .args
                     .iter()
@@ -294,7 +291,6 @@ impl Test {
                     }
                 };
                 let paras = match fn_attr.parse_params(&resolved_args) {
-                    // 使用替换后的参数
                     Ok(v) => v,
                     Err(e) => {
                         error!("execute cmd {} failed! Error: {}\n", &cmd.opfunc, e);
@@ -302,7 +298,7 @@ impl Test {
                     }
                 };
 
-                match cmd.run(&lib_parser, &fn_attr, &paras, &input) { // 添加input_vars参数
+                match cmd.run(&lib_parser, &fn_attr, &paras, &input) {
                     Ok(v) => {
                         if !v {
                             case_success = false;
@@ -379,7 +375,7 @@ impl Cmd {
         lib_parser: &LibParse,
         fn_attr: &FnAttr,
         paras: &Vec<u64>,
-        input_vars: &HashMap<String, String>, // 新增输入参数
+        input_vars: &HashMap<String, String>,
     ) -> Result<bool, Box<dyn Error>> {
         #[cfg(target_os = "linux")]
         let start = high_precision_time();
@@ -454,18 +450,92 @@ mod tests {
         name = "test_rw_u32"
         thread_num=100
         cmds = [
-            { opfunc = "my_malloc", expect_eq = 0, args = ["len=100", "mem_idx=   1"] },
+            { opfunc = "my_malloc", expect_eq = 0, args = ["len=100", "mem_idx=1"] },
             { opfunc = "my_write32", expect_eq = 0, args = ["mem_idx=1", "offset=0", "val=888"] },
             { opfunc = "my_read32", expect_eq = 888, args = ["mem_idx=1", "offset=0"] },
-            { opfunc = "my_write32", expect_eq = 0, args = ["mem_idx=1", "offset=0", "val=444"] },
-            { opfunc = "my_read32", expect_eq = 444, args = ["mem_idx=1", "offset=0"] },
-            { opfunc = "my_free", expect_eq = 0, args = ["mem_idx=1"] },
         ]
         "#;
 
         let config: Config = toml::from_str(config_content).unwrap();
         assert_eq!(config.tests.len(), 1);
         assert_eq!(config.tests[0].name, "test_rw_u32");
+    }
+
+    #[test]
+    fn test_parse_config_with_inputs() {
+        let config_content = r#"
+        [[tests]]
+        name = "test_with_inputs"
+        thread_num=2
+        cmds = [
+            { opfunc = "my_malloc", expect_eq = 0, args = ["len=$alloc_size", "mem_idx=1"] },
+        ]
+        inputs = [
+            { name = "input1", args = { alloc_size = "100" } },
+            { args = { alloc_size = "200" } },
+            { args = { alloc_size = "300" } },
+        ]
+        "#;
+
+        let config: Config = toml::from_str(config_content).unwrap();
+        assert_eq!(config.tests.len(), 1);
+        assert_eq!(config.tests[0].inputs.len(), 3);
+        assert_eq!(config.tests[0].inputs[0].name, "input1".to_string());
+        assert_eq!(config.tests[0].inputs[1].name, "default1".to_string());
+        assert_eq!(config.tests[0].inputs[2].name, "default2".to_string());
+    }
+
+    #[test]
+    fn test_condition_parsing() {
+        let cmd_content = r#"
+        opfunc = "test_func"
+        expect_eq = 0
+        args = ["arg1"]
+        "#;
+
+        let cmd: Cmd = toml::from_str(cmd_content).unwrap();
+        assert!(matches!(cmd.condition, Condition::Eq(_)));
+
+        let cmd_content = r#"
+        opfunc = "test_func"
+        expect_ne = 1
+        args = ["arg1"]
+        "#;
+
+        let cmd: Cmd = toml::from_str(cmd_content).unwrap();
+        assert!(matches!(cmd.condition, Condition::Ne(_)));
+    }
+
+    #[test]
+    fn test_replace_vars() {
+        let mut vars = HashMap::new();
+        vars.insert("var1".to_string(), "value1".to_string());
+        vars.insert("var2".to_string(), "value2".to_string());
+
+        let result = replace_vars("test_$var1_$var2".to_string(), &vars);
+        assert_eq!(result, "test_value1_value2");
+    }
+
+    #[test]
+    fn test_concurrency_group() {
+        let config_content = r#"
+        concurrences = [
+            { tests = ["test1", "test2"], name = "group1" }
+        ]
+
+        [[tests]]
+        name = "test1"
+        thread_num=1
+        cmds = []
+
+        [[tests]]
+        name = "test2"
+        thread_num=1
+        cmds = []
+        "#;
+
+        let config: Config = toml::from_str(config_content).unwrap();
+        assert_eq!(config.concurrences.unwrap()[0].name, "group1");
     }
 
     #[test]
@@ -532,9 +602,9 @@ mod tests {
         assert_eq!(config.tests.len(), 1);
         assert_eq!(config.tests[0].name, "test_write_panic");
         assert_eq!(config.tests[0].should_panic, true);
-        assert_eq!(config.tests[0].cmds[0].condition, Condition::Eq(0));
-        assert_eq!(config.tests[0].cmds[1].condition, Condition::Ne(0));
-        assert_eq!(config.tests[0].cmds[2].condition, Condition::Eq(888));
-        assert_eq!(config.tests[0].cmds[3].condition, Condition::Ne(888));
+        assert_eq!(config.tests[0].cmds[0].condition, Condition::Eq("0".to_string()));
+        assert_eq!(config.tests[0].cmds[1].condition, Condition::Ne("0".to_string()));
+        assert_eq!(config.tests[0].cmds[2].condition, Condition::Eq("888".to_string()));
+        assert_eq!(config.tests[0].cmds[3].condition, Condition::Ne("888".to_string()));
     }
 }

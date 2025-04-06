@@ -36,24 +36,32 @@ pub fn prepare_sample_files() -> (String, String) {
 name = "test_rw_u32"
 thread_num=2
 cmds = [
-{ opfunc = "Call_malloc", expect_eq = 0, perf=true, args = ["len=100", "mem_idx=1"] },
-{ opfunc = "Call_write32", expect_eq = 0, perf=true, args = ["addr_idx=1",  "val=888"] },
-{ opfunc = "Call_read32", expect_eq = 888, perf=true, args = ["addr_idx=1", ] },
-{ opfunc = "Call_write32", expect_eq = 0, perf=true, args = ["addr_idx=1",  "val=444"] },
-{ opfunc = "Call_read32", expect_eq = 444, perf=true, args = ["addr_idx=1", ] },
+{ opfunc = "Call_malloc", expect_eq = 0, perf=true, args = ["len=$alloc_size", "mem_idx=1"] },
+{ opfunc = "Call_write32", expect_eq = 0, perf=true, args = ["addr_idx=1", "val=$write_val"] },
+{ opfunc = "Call_read32", expect_eq = "$write_val", perf=true, args = ["addr_idx=1"] },
 { opfunc = "Call_free", expect_eq = 0, perf=true, args = ["mem_idx=1"] },
+]
+inputs = [
+{name = "ipt1", args = { alloc_size = "100", write_val = "888" } },
+{name = "ipt2", args = { alloc_size = "200", write_val = "999" } },
+{ args = { alloc_size = "50", write_val = "555" } }    # 自动命名为default1
 ]
 
 [[tests]]
 name = "test_rw_u32_ne"
 thread_num=2
 cmds = [
-{ opfunc = "Call_malloc", expect_eq = 0, args = ["len=100", "mem_idx=1"] },
-{ opfunc = "Call_write32", expect_eq = 0, args = ["addr_idx=1",  "val=888"] },
-{ opfunc = "Call_read32", expect_eq = 888, args = ["addr_idx=1", ] },
-{ opfunc = "Call_write32", expect_eq = 0, args = ["addr_idx=1",  "val=444"] },
-{ opfunc = "Call_read32", expect_ne = 888, args = ["addr_idx=1", ] },
+{ opfunc = "Call_malloc", expect_eq = 0, args = ["len=$alloc_size", "mem_idx=1"] },
+{ opfunc = "Call_write32", expect_eq = 0, args = ["addr_idx=1", "val=$write_val1"] },
+{ opfunc = "Call_read32", expect_eq = "$write_val1", args = ["addr_idx=1"] },
+{ opfunc = "Call_write32", expect_eq = 0, args = ["addr_idx=1", "val=$write_val2"] },
+{ opfunc = "Call_read32", expect_ne = "$write_val1", args = ["addr_idx=1"] },
 { opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=1"] },
+]
+inputs = [
+{ args = { alloc_size = "100", write_val1 = "888", write_val2 = "444" } },  # 自动命名为default1
+{ args = { alloc_size = "200", write_val1 = "999", write_val2 = "555" } }, # 自动命名为default2
+{ args = { alloc_size = "50", write_val1 = "555", write_val2 = "666" } }   # 自动命名为default3
 ]
 
 [[tests]]
@@ -67,12 +75,9 @@ cmds = [
 { opfunc = "Call_strcmp", expect_eq = 0, args = ["str1=1", "str2=2"] },
 { opfunc = "Call_mem_strlen", expect_eq = 7, args = ["str_idx=1"] },
 { opfunc = "Call_mem_strlen", expect_eq = 7, args = ["str_idx=2"] },
-
-# modify str2, expect str1 != str2
 { opfunc = "Call_strfill", expect_eq = 0, args = ["dst_addr=1", "content='casdaaasda'", "len=10"] },
 { opfunc = "Call_mem_strlen", expect_ne = 7, args = ["str_idx=1"] },
 { opfunc = "Call_strcmp", expect_ne = 0, args = ["str1=1", "str2=2"] },
-
 { opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=1"] },
 { opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=2"] }
 ]"#
