@@ -214,7 +214,7 @@ impl Test {
             Ok(ForkResult::Child) => {
                 child_test.thread_num = 1;
                 child_test.should_panic = false;
-                let res = child_test.run_one_thread(lib_parser);
+                let _res = child_test.run_one_thread(lib_parser);
                 exit(0);
             }
             Ok(ForkResult::Parent { child }) => {
