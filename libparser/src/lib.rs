@@ -6,7 +6,7 @@ use std::{
     error::Error,
     ffi::CString,
     fs,
-    os::raw::c_int,
+    os::raw::c_longlong,
     path::{Path, PathBuf},
     process::Command,
     sync::Arc,
@@ -41,9 +41,9 @@ thread_local! {
 //  4k bytes buffer for api communication, buffer of parameters, number of parameters, and buffer of return value.
 type FnPtr = extern "C" fn(
     *mut u64,   // uint64_t* param_page, for apis communication
-    *const u64, // const uint64_t* params, send parameters to wrapper
-    c_int,      // int params_len
-) -> c_int;
+    *const i64, // const uint64_t* params, send parameters to wrapper
+    c_longlong,      // int params_len
+) -> c_longlong;
 
 pub struct FnAttr {
     fnptr: FnPtr,
@@ -55,14 +55,14 @@ impl FnAttr {
         FnAttr { fnptr, paras }
     }
 
-    fn run(&self, params: &[u64]) -> i32 {
+    fn run(&self, params: &[i64]) -> i64 {
         TLS_PAGE.with(|addr| {
             let mut addr = addr.borrow_mut();
-            (self.fnptr)(addr.as_mut_ptr(), params.as_ptr(), params.len() as c_int) as i32
+            (self.fnptr)(addr.as_mut_ptr(), params.as_ptr(), params.len() as c_longlong) as i64
         })
     }
 
-    pub fn parse_params(&self, config_params: &Vec<String>) -> Result<Vec<u64>, Box<dyn Error>> {
+    pub fn parse_params(&self, config_params: &Vec<String>) -> Result<Vec<i64>, Box<dyn Error>> {
         if config_params.len() != self.paras.len() {
             return Err(format!(
                 "params size mismatch: expect params contains {} element, but got {}",
@@ -72,13 +72,17 @@ impl FnAttr {
             .into());
         }
 
-        let mut params: Vec<u64> = Vec::new();
+        let mut params: Vec<i64> = Vec::new();
 
         for key in self.paras.clone() {
             let mut succ = false;
             for value in config_params {
                 if let Some(para) = value.strip_prefix(&format!("{}=", key)) {
-                    if let Ok(num) = para.parse::<u64>() {
+                    if let Ok(num) = if para.starts_with("0x") || para.starts_with("0X") {
+                        i64::from_str_radix(&para[2..], 16)
+                    } else {
+                        para.parse::<i64>()
+                    } {
                         params.push(num);
                         succ = true;
                         break;
@@ -90,8 +94,8 @@ impl FnAttr {
                         C_STRINGS.with(|c_strings| {
                             let mut c_strings = c_strings.borrow_mut();
                             c_strings.push(c_str);
-                        }); // keep c_str alive
-                        params.push(raw_ptr as u64);
+                        });
+                        params.push(raw_ptr as i64);
                         succ = true;
                         break;
                     }
@@ -121,7 +125,7 @@ impl LibParse {
     // for test only
     #[cfg(test)]
     pub fn new_with_mock() -> Self {
-        extern "C" fn mock_fn(_: *mut u64, _: *const u64, _: i32) -> i32 { 0 }
+        extern "C" fn mock_fn(_: *mut u64, _: *const i64, _: i64) -> i64 { 0 }
 
         let mut funcs = HashMap::new();
         funcs.insert(
@@ -178,9 +182,9 @@ impl LibParse {
         &self,
         func_name: &str,
         config_params: &Vec<String>,
-    ) -> Result<i32, Box<dyn Error>> {
+    ) -> Result<i64, Box<dyn Error>> {
         let func_attr = self.get_func(func_name)?;
-        let params: Vec<u64> = func_attr.parse_params(config_params)?;
+        let params: Vec<i64> = func_attr.parse_params(config_params)?;
 
         Ok(func_attr.run(&params).try_into().unwrap())
     }
@@ -188,9 +192,9 @@ impl LibParse {
     pub fn call_func_attr(
         &self,
         fn_attr: &FnAttr,
-        config_params: &Vec<u64>,
-    ) -> Result<i32, Box<dyn Error>> {
-        let params: Vec<u64> = config_params.clone();
+        config_params: &Vec<i64>,
+    ) -> Result<i64, Box<dyn Error>> {
+        let params: Vec<i64> = config_params.clone();
 
         Ok(fn_attr.run(&params).try_into().unwrap())
     }
@@ -245,6 +249,7 @@ pub fn compile_lib(file: PathBuf) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    extern "C" fn mock_fn(_: *mut u64, _: *const i64, _: i64) -> i64 { 0 }
 
     fn create_mock_parser() -> LibParse {
         let config_content = r#"
@@ -258,9 +263,6 @@ mod tests {
 
         // parse config
         let _config: LibConfig = toml::from_str(config_content).unwrap();
-
-        extern "C" fn mock_fn(_: *mut u64, _: *const u64, _: i32) -> i32 { 0 }
-
         let mut funcs = HashMap::new();
         funcs.insert(
             "test_func".to_string(),
@@ -298,10 +300,6 @@ mod tests {
 
     #[test]
     fn test_parse_params() {
-        extern "C" fn mock_fn(_: *mut u64, _: *const u64, _: i32) -> i32 {
-            0
-        }
-
         let fn_attr = FnAttr {
             fnptr: mock_fn,
             paras: vec!["param1".to_string(), "param2".to_string()]

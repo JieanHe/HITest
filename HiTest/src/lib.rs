@@ -30,7 +30,7 @@ struct Test {
     name: String,
     cmds: Vec<Cmd>,
     #[serde(default = "default_one")]
-    thread_num: i32,
+    thread_num: i64,
     #[serde(default = "default_false")]
     should_panic: bool,
     #[serde(default = "default_true")]
@@ -62,7 +62,7 @@ fn default_true() -> bool {
     true
 }
 
-fn default_one() -> i32 {
+fn default_one() -> i64 {
     1
 }
 
@@ -94,7 +94,7 @@ impl<'de> Deserialize<'de> for Condition {
         #[derive(Deserialize)]
         #[serde(untagged)]
         enum Value {
-            Number(i32),
+            Number(i64),
             String(String),
         }
 
@@ -186,24 +186,19 @@ impl ConcurrencyGroup {
         let count = results.into_iter().filter(|&x| x).count();
         debug!(
             "Parallel execute concurrency Group {} with {} thread, {} passed!",
-            self.name,
-            expect_succ_num,
-            count
+            self.name, expect_succ_num, count
         );
 
         let succ = count as usize == expect_succ_num;
         if succ {
             info!(
                 "Parallel execute concurrency Group {} with {} thread, all passed!",
-                self.name,
-                expect_succ_num
+                self.name, expect_succ_num
             );
         } else {
             error!(
                 "Parallel execute concurrency Group {} with {} thread, {} passed!",
-                self.name,
-                expect_succ_num,
-                count
+                self.name, expect_succ_num, count
             );
         }
 
@@ -299,7 +294,7 @@ impl Test {
         }
         if all_success {
             info!("Test case {} execute successfully!\n", self.name);
-        }   else {
+        } else {
             error!("Test case {} execute failed!\n", self.name);
         }
 
@@ -318,31 +313,42 @@ impl Test {
                     test.break_if_fail = input.break_if_fail.unwrap_or(self.break_if_fail);
                     test.should_panic = input.should_panic.unwrap_or(self.should_panic);
                     test.name = format!("{}_{}", self.name, input.name);
-                    test.cmds = test.cmds.iter().map(|cmd| {
-                        let resolved_args = cmd.args.iter()
-                            .map(|arg| replace_vars(arg.clone(), &input.args))
-                            .collect();
+                    test.cmds = test
+                        .cmds
+                        .iter()
+                        .map(|cmd| {
+                            let resolved_args = cmd
+                                .args
+                                .iter()
+                                .map(|arg| replace_vars(arg.clone(), &input.args))
+                                .collect();
 
-                        let condition = match &cmd.condition {
-                            Condition::Eq(s) => Condition::Eq(replace_vars(s.clone(), &input.args)),
-                            Condition::Ne(s) => Condition::Ne(replace_vars(s.clone(), &input.args)),
-                        };
-                        Cmd {
-                            opfunc: cmd.opfunc.clone(),
-                            condition,
-                            args: resolved_args,
-                            perf: cmd.perf,
-                        }
-                    }).collect();
+                            let condition = match &cmd.condition {
+                                Condition::Eq(s) => {
+                                    Condition::Eq(replace_vars(s.clone(), &input.args))
+                                }
+                                Condition::Ne(s) => {
+                                    Condition::Ne(replace_vars(s.clone(), &input.args))
+                                }
+                            };
+                            Cmd {
+                                opfunc: cmd.opfunc.clone(),
+                                condition,
+                                args: resolved_args,
+                                perf: cmd.perf,
+                            }
+                        })
+                        .collect();
 
                     test
                 })
                 .collect()
         };
 
-        let tests: Vec<_> = tests.into_iter()
-        .flat_map(|test| (0..self.thread_num).map(move |_| test.clone()))
-        .collect();
+        let tests: Vec<_> = tests
+            .into_iter()
+            .flat_map(|test| (0..self.thread_num).map(move |_| test.clone()))
+            .collect();
 
         let results: Vec<_> = tests
             .into_par_iter()
@@ -367,7 +373,7 @@ impl Cmd {
         &self,
         lib_parser: &LibParse,
         fn_attr: &FnAttr,
-        paras: &Vec<u64>,
+        paras: &Vec<i64>,
         input_vars: &HashMap<String, String>,
     ) -> Result<bool, Box<dyn Error>> {
         #[cfg(target_os = "linux")]
@@ -389,12 +395,16 @@ impl Cmd {
         let (expected, operator, is_success) = match &self.condition {
             Condition::Eq(v) => {
                 let resolved = replace_vars(v.to_string(), input_vars);
-                let expected = resolved.parse::<i32>()?;
+                let expected = resolved.parse::<i64>()?;
                 (expected, "==", ret == expected)
             }
             Condition::Ne(v) => {
                 let resolved = replace_vars(v.to_string(), input_vars);
-                let expected = resolved.parse::<i32>()?;
+                let expected = if resolved.starts_with("0x") || resolved.starts_with("0X") {
+                    i64::from_str_radix(&resolved[2..], 16)?
+                } else {
+                    resolved.parse::<i64>()?
+                };
                 (expected, "!=", ret != expected)
             }
         };
