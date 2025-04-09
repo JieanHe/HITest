@@ -28,6 +28,7 @@ pub fn prepare_sample_files() -> (String, String) {
     }
 
     {
+        #[cfg_attr(not(unix), allow(unused_mut))]
         let mut test_case: String = r#"concurrences = [
 { tests = ["test_rw_u32", "Test_str_fill"], name = "group1" },
 ]
@@ -82,7 +83,7 @@ cmds = [
 { opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=2"] }
 ]"#
         .to_string();
-        
+
 
         #[cfg(unix)]
         {

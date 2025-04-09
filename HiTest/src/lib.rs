@@ -182,27 +182,27 @@ impl ConcurrencyGroup {
             .into_par_iter()
             .map(|test| test.run(lib_parser))
             .collect();
-
+        let expect_succ_num = results.len();
         let count = results.into_iter().filter(|&x| x).count();
         debug!(
             "Parallel execute concurrency Group {} with {} thread, {} passed!",
             self.name,
-            self.tests.len(),
+            expect_succ_num,
             count
         );
 
-        let succ = count as usize == self.tests.len();
+        let succ = count as usize == expect_succ_num;
         if succ {
             info!(
                 "Parallel execute concurrency Group {} with {} thread, all passed!",
                 self.name,
-                self.tests.len()
+                expect_succ_num
             );
         } else {
             error!(
                 "Parallel execute concurrency Group {} with {} thread, {} passed!",
                 self.name,
-                self.tests.len(),
+                expect_succ_num,
                 count
             );
         }
@@ -261,188 +261,104 @@ impl Test {
     fn run_one_thread(&self, lib_parser: &LibParse) -> bool {
         let mut all_success = true;
 
-        let input_groups: Vec<(String, HashMap<String, String>, Option<bool>, Option<bool>)> =
-            if self.inputs.is_empty() {
-                vec![(
-                    "default".to_string(),
-                    HashMap::new(),
-                    Some(false),
-                    Some(false),
-                )]
-            } else {
-                self.inputs
-                   .iter()
-                   .map(|ig| {
-                        (
-                            ig.name.clone(),
-                            ig.args.clone(),
-                            ig.should_panic,
-                            ig.break_if_fail,
-                        )
-                    })
-                   .collect()
+        for cmd in self.cmds.clone() {
+            let fn_attr = match lib_parser.get_func(&cmd.opfunc) {
+                Ok(v) => v,
+                Err(e) => {
+                    error!("execute cmd {} failed! Error: {}\n", &cmd.opfunc, e);
+                    return false;
+                }
             };
 
-        for (input_name, input, should_panic_opt, break_if_fail_opt) in input_groups {
-            let should_panic = should_panic_opt.unwrap_or(false);
-            let break_if_fail = break_if_fail_opt.unwrap_or(self.break_if_fail);
+            let paras = match fn_attr.parse_params(&cmd.args) {
+                Ok(v) => v,
+                Err(e) => {
+                    error!("execute cmd {} failed! Error: {}\n", &cmd.opfunc, e);
+                    return false;
+                }
+            };
 
-            let mut case_success = true;
-            info!(
-                "Running test case '{}' with input group: {}",
-                self.name,
-                input_name
-            );
-
-            if should_panic {
-                // 复制 Test 实例
-                let mut new_test = self.clone();
-                new_test.should_panic = true;
-
-                // 替换 cmd 参数
-                new_test.cmds = new_test.cmds.iter().map(|cmd| {
-                    let resolved_args = cmd
-                       .args
-                       .iter()
-                       .map(|arg| {
-                            input.iter().fold(arg.clone(), |acc, (k, v)| {
-                                acc.replace(&format!("${}", k), v)
-                            })
-                        })
-                       .collect();
-                    Cmd {
-                        opfunc: cmd.opfunc.clone(),
-                        condition: cmd.condition.clone(),
-                        args: resolved_args,
-                        perf: cmd.perf,
-                    }
-                }).collect();
-
-                case_success = Test::check_panic(new_test, lib_parser);
-            } else {
-                for cmd in self.cmds.clone() {
-                    let uses_input_args = cmd.args.iter().any(|arg| arg.contains('$'));
-                    let resolved_args = cmd
-                       .args
-                       .iter()
-                       .map(|arg| {
-                            input.iter().fold(arg.clone(), |acc, (k, v)| {
-                                acc.replace(&format!("${}", k), v)
-                            })
-                        })
-                       .collect::<Vec<_>>();
-
-                    let fn_attr = match lib_parser.get_func(&cmd.opfunc) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            error!("execute cmd {} failed! Error: {}", &cmd.opfunc, e);
-                            if uses_input_args {
-                                error!("Input group '{}' args: {:?}", input_name, input);
-                            }
-                            if break_if_fail {
-                                case_success = false;
-                                break;
-                            }
-                            case_success = false;
-                            continue;
-                        }
-                    };
-                    let paras = match fn_attr.parse_params(&resolved_args) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            error!("execute cmd {} failed! Error: {}", &cmd.opfunc, e);
-                            if uses_input_args {
-                                error!("Input group '{}' args: {:?}", input_name, input);
-                            }
-                            if break_if_fail {
-                                case_success = false;
-                                break;
-                            }
-                            case_success = false;
-                            continue;
-                        }
-                    };
-
-                    match cmd.run(&lib_parser, &fn_attr, &paras, &input) {
-                        Ok(v) => {
-                            if !v {
-                                case_success = false;
-                                if break_if_fail {
-                                    error!(
-                                        "Test case {} stopped because cmd {} executing failed!\n",
-                                        self.name, &cmd.opfunc
-                                    );
-                                    if uses_input_args {
-                                        error!("Input group '{}' args: {:?}", input_name, input);
-                                    }
-                                    break;
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            error!("execute cmd {} failed! Error: {}\n", &cmd.opfunc, e);
-                            if uses_input_args {
-                                error!("Input group '{}' args: {:?}", input_name, input);
-                            }
-                            if break_if_fail {
-                                case_success = false;
-                                break;
-                            }
-                            case_success = false;
+            match cmd.run(&lib_parser, &fn_attr, &paras, &HashMap::new()) {
+                Ok(v) => {
+                    if !v {
+                        all_success = false;
+                        if self.break_if_fail {
+                            error!(
+                                "Test case {} stopped because cmd {} failed!\n",
+                                self.name, &cmd.opfunc
+                            );
+                            return false;
                         }
                     }
                 }
+                Err(e) => {
+                    error!("execute cmd {} failed! Error: {}\n", &cmd.opfunc, e);
+                    return false;
+                }
             }
-
-            if case_success {
-                info!(
-                    "Test case '{}' with input group '{}' succeeded",
-                    self.name,
-                    input_name
-                );
-            } else {
-                error!(
-                    "Test case '{}' with input group '{}' failed",
-                    self.name,
-                    input_name
-                );
-            }
-            all_success = all_success && case_success;
         }
+        if all_success {
+            info!("Test case {} execute successfully!\n", self.name);
+        }   else {
+            error!("Test case {} execute failed!\n", self.name);
+        }
+
         all_success
     }
 
     fn run(&self, lib_parser: &LibParse) -> bool {
-        if self.should_panic {
-            let child_test = self.clone();
-            return Test::check_panic(child_test, lib_parser);
-        }
+        let tests = if self.inputs.is_empty() {
+            vec![self.clone()]
+        } else {
+            self.inputs
+                .iter()
+                .map(|input| {
+                    let mut test = self.clone();
+                    test.inputs = vec![];
+                    test.break_if_fail = input.break_if_fail.unwrap_or(self.break_if_fail);
+                    test.should_panic = input.should_panic.unwrap_or(self.should_panic);
+                    test.name = format!("{}_{}", self.name, input.name);
+                    test.cmds = test.cmds.iter().map(|cmd| {
+                        let resolved_args = cmd.args.iter()
+                            .map(|arg| replace_vars(arg.clone(), &input.args))
+                            .collect();
 
-        if self.thread_num == 1 {
-            return self.run_one_thread(lib_parser);
-        }
+                        let condition = match &cmd.condition {
+                            Condition::Eq(s) => Condition::Eq(replace_vars(s.clone(), &input.args)),
+                            Condition::Ne(s) => Condition::Ne(replace_vars(s.clone(), &input.args)),
+                        };
+                        Cmd {
+                            opfunc: cmd.opfunc.clone(),
+                            condition,
+                            args: resolved_args,
+                            perf: cmd.perf,
+                        }
+                    }).collect();
 
-        let results: Vec<_> = (0..self.thread_num)
+                    test
+                })
+                .collect()
+        };
+
+        let tests: Vec<_> = tests.into_iter()
+        .flat_map(|test| (0..self.thread_num).map(move |_| test.clone()))
+        .collect();
+
+        let results: Vec<_> = tests
             .into_par_iter()
-            .map(|_| self.run_one_thread(lib_parser))
+            .map(|test| {
+                if test.should_panic {
+                    let mut child_test = test.clone();
+                    child_test.should_panic = false;
+                    Test::check_panic(child_test, lib_parser)
+                } else {
+                    test.run_one_thread(lib_parser)
+                }
+            })
             .collect();
 
-        debug!("results: {:#?}", results);
-        let count = results.into_iter().filter(|&x| x).count();
-
-        let succ = count as i32 == self.thread_num;
-        if succ {
-            info!(
-                "run test case {} with {} thread, all passed!",
-                self.name, self.thread_num
-            );
-        } else {
-            error!(
-                "run test case {} with {} thread, {} passed!",
-                self.name, self.thread_num, count
-            );
-        }
-        succ
+        let count = results.iter().filter(|&&x| x).count();
+        count == results.len() as usize
     }
 }
 
@@ -475,12 +391,12 @@ impl Cmd {
                 let resolved = replace_vars(v.to_string(), input_vars);
                 let expected = resolved.parse::<i32>()?;
                 (expected, "==", ret == expected)
-            },
+            }
             Condition::Ne(v) => {
                 let resolved = replace_vars(v.to_string(), input_vars);
                 let expected = resolved.parse::<i32>()?;
                 (expected, "!=", ret != expected)
-            },
+            }
         };
 
         let message = format!(
@@ -510,9 +426,8 @@ fn high_precision_time() -> std::time::Duration {
 }
 
 fn replace_vars(s: String, vars: &HashMap<String, String>) -> String {
-    vars.iter().fold(s, |acc, (k, v)| {
-        acc.replace(&format!("${}", k), v)
-    })
+    vars.iter()
+        .fold(s, |acc, (k, v)| acc.replace(&format!("${}", k), v))
 }
 
 #[cfg(test)]
@@ -679,9 +594,21 @@ mod tests {
         assert_eq!(config.tests.len(), 1);
         assert_eq!(config.tests[0].name, "test_write_panic");
         assert_eq!(config.tests[0].should_panic, true);
-        assert_eq!(config.tests[0].cmds[0].condition, Condition::Eq("0".to_string()));
-        assert_eq!(config.tests[0].cmds[1].condition, Condition::Ne("0".to_string()));
-        assert_eq!(config.tests[0].cmds[2].condition, Condition::Eq("888".to_string()));
-        assert_eq!(config.tests[0].cmds[3].condition, Condition::Ne("888".to_string()));
+        assert_eq!(
+            config.tests[0].cmds[0].condition,
+            Condition::Eq("0".to_string())
+        );
+        assert_eq!(
+            config.tests[0].cmds[1].condition,
+            Condition::Ne("0".to_string())
+        );
+        assert_eq!(
+            config.tests[0].cmds[2].condition,
+            Condition::Eq("888".to_string())
+        );
+        assert_eq!(
+            config.tests[0].cmds[3].condition,
+            Condition::Ne("888".to_string())
+        );
     }
 }
