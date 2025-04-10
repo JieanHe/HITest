@@ -2,11 +2,12 @@ use libparser::{FnAttr, LibParse};
 use log::{debug, error, info};
 #[cfg(unix)]
 use nix::{libc, sys::wait::waitpid, sys::wait::WaitStatus, unistd::fork, unistd::ForkResult};
-
+use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 use rayon::prelude::*;
 use serde::{de::Error as DError, Deserialize, Deserializer};
 use std::collections::HashMap;
-use std::error::Error;
+use std::{error::Error, io::Write};
+
 #[cfg(unix)]
 use std::process::exit;
 
@@ -131,6 +132,10 @@ impl Config {
             return;
         }
 
+        let mut total_tests = 0;
+        let mut success_tests = 0;
+        let mut failed_tests = 0;
+
         // run concurrency group
         if let Some(concurrences) = self.concurrences {
             info!("Starting run concurrency groups!");
@@ -140,6 +145,7 @@ impl Config {
                 }
             }
         }
+
         // run test cases
         for test in self.tests {
             info!(
@@ -147,13 +153,37 @@ impl Config {
                 test.name, test.thread_num
             );
 
+            let test_result = test.run(lib_parser);
+            total_tests += 1;
+            if test_result {
+                success_tests += 1;
+            } else {
+                failed_tests += 1;
+            }
+
             // reporting test conclusion
-            if test.run(lib_parser) {
+            if test_result {
                 info!("run test case {} succeeded!\n", test.name);
             } else {
                 error!("run test case {} failed!\n", test.name);
             }
         }
+
+        let mut stdout = StandardStream::stdout(ColorChoice::Always);
+        if failed_tests == 0 {
+            stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green))).unwrap();
+        } else {
+            stdout.set_color(ColorSpec::new().set_fg(Some(Color::Red))).unwrap();
+        }
+        writeln!(
+            stdout,
+            "Global Summary: Total tests: {}, Success: {}, Failure: {}",
+            total_tests,
+            success_tests,
+            failed_tests
+        )
+       .unwrap();
+        stdout.reset().unwrap();
     }
 }
 
@@ -306,35 +336,36 @@ impl Test {
             vec![self.clone()]
         } else {
             self.inputs
-                .iter()
-                .map(|input| {
+               .iter()
+               .map(|input| {
                     let mut test = self.clone();
                     test.inputs = vec![];
                     test.break_if_fail = input.break_if_fail.unwrap_or(self.break_if_fail);
                     test.should_panic = input.should_panic.unwrap_or(self.should_panic);
                     test.name = format!("{}_{}", self.name, input.name);
                     test.cmds = test
-                        .cmds
-                        .iter()
-                        .map(|cmd| {
+                       .cmds
+                       .iter()
+                       .map(|cmd| {
                             let resolved_args = cmd
-                                .args
-                                .iter()
-                                .map(|arg| replace_vars(arg.clone(), &input.args))
-                                .collect();
+                               .args
+                               .iter()
+                               .map(|arg| replace_vars(arg.clone(), &input.args))
+                               .collect();
 
-                                let condition = match &cmd.condition {
-                                    Condition::Eq(s) => {
-                                        let replaced = replace_vars(s.clone(), &input.args);
-                                        if replaced.starts_with("!"){
-                                            Condition::Ne(replaced[1..].to_string())}
-                                        else {
-                                            Condition::Eq(replaced)}
+                            let condition = match &cmd.condition {
+                                Condition::Eq(s) => {
+                                    let replaced = replace_vars(s.clone(), &input.args);
+                                    if replaced.starts_with("!") {
+                                        Condition::Ne(replaced[1..].to_string())
+                                    } else {
+                                        Condition::Eq(replaced)
                                     }
-                                    Condition::Ne(s) => {
-                                        Condition::Ne(replace_vars(s.clone(), &input.args))
-                                    }
-                                };
+                                }
+                                Condition::Ne(s) => {
+                                    Condition::Ne(replace_vars(s.clone(), &input.args))
+                                }
+                            };
                             Cmd {
                                 opfunc: cmd.opfunc.clone(),
                                 condition,
@@ -342,21 +373,21 @@ impl Test {
                                 perf: cmd.perf,
                             }
                         })
-                        .collect();
+                       .collect();
 
                     test
                 })
-                .collect()
+               .collect()
         };
 
         let tests: Vec<_> = tests
-            .into_iter()
-            .flat_map(|test| (0..self.thread_num).map(move |_| test.clone()))
-            .collect();
+           .into_iter()
+           .flat_map(|test| (0..self.thread_num).map(move |_| test.clone()))
+           .collect();
 
         let results: Vec<_> = tests
-            .into_par_iter()
-            .map(|test| {
+           .into_par_iter()
+           .map(|test| {
                 if test.should_panic {
                     let mut child_test = test.clone();
                     child_test.should_panic = false;
@@ -365,10 +396,22 @@ impl Test {
                     test.run_one_thread(lib_parser)
                 }
             })
-            .collect();
+           .collect();
 
-        let count = results.iter().filter(|&&x| x).count();
-        count == results.len() as usize
+        let total_count = results.len();
+        let success_count = results.iter().filter(|&&x| x).count();
+        let failure_count = total_count - success_count;
+
+        let mut stdout = StandardStream::stdout(ColorChoice::Always);
+        if failure_count == 0 {
+            stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green))).unwrap();
+        } else {
+            stdout.set_color(ColorSpec::new().set_fg(Some(Color::Yellow))).unwrap();
+        }
+        writeln!(stdout, "Test case {} run tests: {}, Success: {}, Failure: {}", self.name, total_count, success_count, failure_count).unwrap();
+        stdout.reset().unwrap();
+
+        success_count == total_count
     }
 }
 
@@ -419,8 +462,7 @@ impl Cmd {
                     (expected, "!=", ret != expected)
                 } else {
                     (expected, "==", ret == expected)
-                }
-                
+                }                
             },
             Condition::Ne(v) => {
                 let resolved = replace_vars(v.to_string(), input_vars);
