@@ -462,7 +462,7 @@ impl Cmd {
                     (expected, "!=", ret != expected)
                 } else {
                     (expected, "==", ret == expected)
-                }                
+                }
             },
             Condition::Ne(v) => {
                 let resolved = replace_vars(v.to_string(), input_vars);

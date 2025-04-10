@@ -200,7 +200,7 @@ impl LibParse {
     }
 }
 
-pub fn compile_lib(file: PathBuf) {
+pub fn compile_lib(file: PathBuf, out_dir: &str) {
     let file_name = file
         .file_name()
         .expect(&format!("invlaid file {:?}", &file))
@@ -209,13 +209,13 @@ pub fn compile_lib(file: PathBuf) {
         .unwrap();
 
     let target = if cfg!(unix) {
-        format!("lib{}.so", file_name)
+        format!("{}.so", file_name)
     } else if cfg!(windows) {
         format!("{}.dll", file_name)
     } else {
         panic!("Unsupported platform");
     };
-    let target = file.parent().unwrap().join(target);
+    let target = format!("{}/{}", out_dir, target);
 
     let compiler = "gcc";
 
@@ -224,7 +224,7 @@ pub fn compile_lib(file: PathBuf) {
         .arg("-fPIC")
         .arg(file)
         .arg("-o")
-        .arg(&target)
+        .arg(& target)
         .status();
 
     match status {

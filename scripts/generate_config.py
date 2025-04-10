@@ -65,7 +65,8 @@ def generate_toml(configs: list, output_path: str, file_name: str, lib_dir: str 
     lib_name = f"{file_name}{lib_ext}" if sys.platform == "win32" else f"lib{file_name}{lib_ext}"
 
     if lib_dir:
-        lib_name = f"{lib_dir}/{lib_name}"
+        lib_name = lib_dir
+
     libs.add("path", lib_name)
     print(f'auto set lib path as {lib_name}')
     # Build functions array with parameters

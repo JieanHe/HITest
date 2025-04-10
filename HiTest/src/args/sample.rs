@@ -3,14 +3,21 @@ use std::{fs::File, io::Write, path::Path, process::Command};
 
 pub fn prepare_sample_files() -> (String, String) {
     let libmalloc = Path::new("./sample/libmalloc.c").to_path_buf();
-    compile_lib(libmalloc);
+    compile_lib(libmalloc, "./libs/");
 
-    const SAMPLE_LIB_CFG: &str = "./sample/dependlibs.toml";
-    const SAMPLE_TEST_CFG: &str = "./sample/tc_libmalloc.toml";
+    const SAMPLE_LIB_CFG: &str = "./cfgs/dependlibs.toml";
+    const SAMPLE_TEST_CFG: &str = "./cfgs/tc_libmalloc.toml";
 
     {
         // 使用Python脚本生成lib配置
         let python_cmd = if cfg!(target_os = "windows") { "python" } else { "python3" };
+        let target = if cfg!(unix) {
+            "./libs/libmalloc.so"
+        } else if cfg!(windows) {
+            "./libs/libmalloc.dll"
+        } else {
+            panic!("Unsupported platform");
+        };
         let status = Command::new(python_cmd)
             .arg("scripts/generate_config.py")
             .arg("-f")
@@ -18,7 +25,7 @@ pub fn prepare_sample_files() -> (String, String) {
             .arg("-o")
             .arg(SAMPLE_LIB_CFG)
             .arg("-l")
-            .arg("./sample")
+            .arg(target)
             .status()
             .expect("Failed to generate lib config");
 
@@ -45,7 +52,7 @@ cmds = [
 inputs = [
 {name = "ipt1", args = { alloc_size = "100", write_val = "888" } },
 {name = "ipt2", args = { alloc_size = "200", write_val = "999" } },
-{ args = { alloc_size = "50", write_val = "555" } }    
+{ args = { alloc_size = "50", write_val = "555" } }
 ]
 
 [[tests]]
@@ -60,9 +67,9 @@ cmds = [
 { opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=1"] },
 ]
 inputs = [
-{ args = { alloc_size = "100", write_val1 = "0x888", write_val2 = "444" } }, 
-{ args = { alloc_size = "200", write_val1 = "0x999", write_val2 = "555" } }, 
-{ args = { alloc_size = "50", write_val1 = "0x555", write_val2 = "666" } } 
+{ args = { alloc_size = "100", write_val1 = "0x888", write_val2 = "444" } },
+{ args = { alloc_size = "200", write_val1 = "0x999", write_val2 = "555" } },
+{ args = { alloc_size = "50", write_val1 = "0x555", write_val2 = "666" } }
 ]
 
 [[tests]]
@@ -83,8 +90,8 @@ cmds = [
 { opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=2"] }
 ]
 inputs = [
-{ args = { second_len = "!7" } },  
-{ args = { second_len = "10" } }  
+{ args = { second_len = "!7" } },
+{ args = { second_len = "10" } }
 ]
 "#
         .to_string();
@@ -106,12 +113,12 @@ cmds = [
 { opfunc = "Call_close", expect_eq = 0, args = ["fd_idx=8"] },
 ]
 inputs = [
-{ args = { len = "8192", prot = "7", flags = "5", val = "0x44564" , map_res = "0"} },  
-{ args = { len = "81920", prot = "3", flags = "4", val = "13214", map_res = "0" } }, 
-{ args = { len = "81920", prot = "2", flags = "1", val = "13214" , map_res = "0"} },  
-{ should_panic = false, args = { len = "8192", prot = "2", flags = "4", val = "44564" , map_res = "0"} },  
+{ args = { len = "8192", prot = "7", flags = "5", val = "0x44564" , map_res = "0"} },
+{ args = { len = "81920", prot = "3", flags = "4", val = "13214", map_res = "0" } },
+{ args = { len = "81920", prot = "2", flags = "1", val = "13214" , map_res = "0"} },
+{ should_panic = false, args = { len = "8192", prot = "2", flags = "4", val = "44564" , map_res = "0"} },
 ]
- 
+
 
 [[tests]]
 name = "test_dev_mem_page"
@@ -125,11 +132,11 @@ cmds = [
 { opfunc = "Call_close", expect_eq = 0, args = ["fd_idx=8"] },
 ]
 inputs = [
-{ args = { len = "8192", prot = "7", flags = "5", val = "44564" } }, 
-{ args = { len = "81920", prot = "3", flags = "4", val = "13214" } },  
-{ should_panic = true, args = { len = "8192", prot = "1", flags = "4", val = "44564" } }, 
+{ args = { len = "8192", prot = "7", flags = "5", val = "44564" } },
+{ args = { len = "81920", prot = "3", flags = "4", val = "13214" } },
+{ should_panic = true, args = { len = "8192", prot = "1", flags = "4", val = "44564" } },
 ]
-    
+
     "#;
         }
 
