@@ -323,14 +323,18 @@ impl Test {
                                 .map(|arg| replace_vars(arg.clone(), &input.args))
                                 .collect();
 
-                            let condition = match &cmd.condition {
-                                Condition::Eq(s) => {
-                                    Condition::Eq(replace_vars(s.clone(), &input.args))
-                                }
-                                Condition::Ne(s) => {
-                                    Condition::Ne(replace_vars(s.clone(), &input.args))
-                                }
-                            };
+                                let condition = match &cmd.condition {
+                                    Condition::Eq(s) => {
+                                        let replaced = replace_vars(s.clone(), &input.args);
+                                        if replaced.starts_with("!"){
+                                            Condition::Ne(replaced[1..].to_string())}
+                                        else {
+                                            Condition::Eq(replaced)}
+                                    }
+                                    Condition::Ne(s) => {
+                                        Condition::Ne(replace_vars(s.clone(), &input.args))
+                                    }
+                                };
                             Cmd {
                                 opfunc: cmd.opfunc.clone(),
                                 condition,
@@ -392,21 +396,37 @@ impl Cmd {
             info!("cmd '{}' executed cost {:?}", self.opfunc, duration);
         }
 
+        let parse_value = |s: &str| -> Result<i64, Box<dyn Error>> {
+            let actual_s = if s.starts_with('!') { &s[1..] } else { s };
+            if actual_s.starts_with("0x") || actual_s.starts_with("0X") {
+                i64::from_str_radix(&actual_s[2..], 16).map_err(|e| {
+                    error!("Failed to parse hexadecimal value: {}", s);
+                    e.into()
+                })
+            } else {
+                actual_s.parse::<i64>().map_err(|e| {
+                    error!("Failed to parse decimal value: {}", s);
+                    e.into()
+                })
+            }
+        };
+
         let (expected, operator, is_success) = match &self.condition {
             Condition::Eq(v) => {
                 let resolved = replace_vars(v.to_string(), input_vars);
-                let expected = resolved.parse::<i64>()?;
-                (expected, "==", ret == expected)
-            }
+                let expected = parse_value(&resolved)?;
+                if v.starts_with("!") {
+                    (expected, "!=", ret != expected)
+                } else {
+                    (expected, "==", ret == expected)
+                }
+                
+            },
             Condition::Ne(v) => {
                 let resolved = replace_vars(v.to_string(), input_vars);
-                let expected = if resolved.starts_with("0x") || resolved.starts_with("0X") {
-                    i64::from_str_radix(&resolved[2..], 16)?
-                } else {
-                    resolved.parse::<i64>()?
-                };
+                let expected = parse_value(&resolved)?;
                 (expected, "!=", ret != expected)
-            }
+            },
         };
 
         let message = format!(
@@ -436,10 +456,13 @@ fn high_precision_time() -> std::time::Duration {
 }
 
 fn replace_vars(s: String, vars: &HashMap<String, String>) -> String {
-    vars.iter()
-        .fold(s, |acc, (k, v)| acc.replace(&format!("${}", k), v))
+    let mut result = s;
+    for (k, v) in vars {
+        result = result.replace(&format!("${}", k), v);
+        result = result.replace(&format!("$!{}", k), &format!("!{}", v));
+    }
+    result
 }
-
 #[cfg(test)]
 mod tests {
 
