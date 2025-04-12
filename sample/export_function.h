@@ -26,45 +26,52 @@
         }                                                                                                         \
     } while (0)
 
-#define IN_RELATIVE_IDX(type, name, param_idx)                                                          \
-    type name;                                                                                          \
-    do                                                                                                  \
-    {                                                                                                   \
-        const uint64_t __idx = params[param_idx];                                                       \
-        if (__idx >= MAX_IDX)                                                                           \
-        {                                                                                               \
-            fprintf(stderr, "[%s] IN_IDX(%s) out of range! the index limit is [0, 512) bug got: %lu\n", \
-                    __func__, #name, __idx);                                                            \
-            return -12;                                                                                 \
-        }                                                                                               \
-        name = (type)param_page[__idx];                                                                 \
-        if (name == 0)                                                                                  \
-        {                                                                                               \
-            fprintf(stderr, "[%s] IN_IDX(%s) got null ptr!\n", __func__, #name);                        \
-            return -14;                                                                                 \
-        }                                                                                               \
+#define GET_INPUT_IDX_NZ(type, name, param_idx)                                                \
+    type name;                                                                                 \
+    do                                                                                         \
+    {                                                                                          \
+        const int __idx = params[param_idx];                                                   \
+        if (__idx >= MAX_IDX)                                                                  \
+        {                                                                                      \
+            fprintf(stderr, "[%s] input [%s=%d] out of range! the index limit is [0, 512) \n", \
+                    __func__, #name, __idx);                                                   \
+            return -12;                                                                        \
+        }                                                                                      \
+        name = (type)param_page[__idx];                                                        \
+        if (name == 0)                                                                         \
+        {                                                                                      \
+            fprintf(stderr, "[%s] input [%s=%d] got nullptr!\n", __func__, #name, __idx);      \
+            return -14;                                                                        \
+        }                                                                                      \
     } while (0)
 
-#define IN_ABSOLUTE_IDX(type, name, param_idx) \
-    type name = params[param_idx];
-
-#define OUT_RELATIVE_IDX(param_idx, val)                                                            \
-    do                                                                                              \
-    {                                                                                               \
-        uint64_t __out_idx_##param_idx = params[param_idx];                                         \
-        if (__out_idx_##param_idx >= MAX_IDX)                                                       \
-        {                                                                                           \
-            fprintf(stderr, "[%s] OUT_IDX out of range! the index limit is [0, 512) bug got %lu\n", \
-                    __func__, param_idx);                                                           \
-            return -12;                                                                             \
-        }                                                                                           \
-        param_page[__out_idx_##param_idx] = (uint64_t)val;                                          \
+#define GET_INPUT_IDX(type, name, param_idx)                                                   \
+    type name;                                                                                 \
+    do                                                                                         \
+    {                                                                                          \
+        const int __idx = params[param_idx];                                                   \
+        if (__idx >= MAX_IDX)                                                                  \
+        {                                                                                      \
+            fprintf(stderr, "[%s] input [%s=%d] out of range! the index limit is [0, 512) \n", \
+                    __func__, #name, __idx);                                                   \
+            return -12;                                                                        \
+        }                                                                                      \
+        name = (type)param_page[__idx];                                                        \
     } while (0)
 
-#define OUT_ABSOLUTE_IDX(param_idx, val) \
-    param_page[param_idx] = (uint64_t)val
+#define GET_VALUE(type, name, param_idx) \
+    type name = (type)params[param_idx];
 
-#define IN_VALUE(type, name, param_idx) \
-    type name = (type)params[param_idx]
+#define SET_OUTPUT_IDX(param_idx, val)                                                     \
+    do                                                                                     \
+    {                                                                                      \
+        if (param_idx >= MAX_IDX)                                                          \
+        {                                                                                  \
+            fprintf(stderr, "[%s] OUT_IDX %uout of range! the index limit is [0, 512) \n", \
+                    __func__, param_idx);                                                  \
+            return -12;                                                                    \
+        }                                                                                  \
+        param_page[param_idx] = (uint64_t)val;                                     \
+    } while (0)
 
 #endif // EXPORT_FUNCTION_H
