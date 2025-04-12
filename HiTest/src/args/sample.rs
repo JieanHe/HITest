@@ -40,6 +40,12 @@ pub fn prepare_sample_files() -> (String, String) {
 { tests = ["test_rw_u32", "Test_str_fill"], name = "group1" },
 ]
 
+[[envs]]
+name = "memory_env"
+init = { opfunc = "Call_malloc", expect_eq = 0, args=["len=10000", "mem_idx=50"] }
+exit = { opfunc = "Call_free", expect_eq = 0, args=["mem_idx=50"] }
+tests = ["test_rw_u32", "test_rw_u32_ne"]
+
 [[tests]]
 name = "test_rw_u32"
 thread_num=2

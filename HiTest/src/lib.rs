@@ -11,11 +11,20 @@ use std::{error::Error, io::Write};
 #[cfg(unix)]
 use std::process::exit;
 
+#[derive(Debug, Deserialize, Clone)]
+struct Env {
+    name: String,
+    init: Cmd,
+    exit: Cmd,
+    tests: Vec<String>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Config {
     #[serde(default)]
     concurrences: Option<Vec<ConcurrencyGroup>>,
-
+    #[serde(default)]
+    envs: Vec<Env>,
     tests: Vec<Test>,
 }
 
@@ -136,18 +145,29 @@ impl Config {
         let mut success_tests = 0;
         let mut failed_tests = 0;
 
+        let tests = self.tests.into_iter().map(|mut test| {
+            for env in &self.envs {
+                if env.tests.contains(&test.name) {
+                    test.cmds.insert(0, env.init.clone());
+                    test.cmds.push(env.exit.clone());
+                    debug!("add env {} to test case {}", env.name, test.name);
+                }
+            }
+            test
+        }).collect::<Vec<_>>();
+
         // run concurrency group
         if let Some(concurrences) = self.concurrences {
             info!("Starting run concurrency groups!");
             for concurrency in concurrences {
-                if concurrency.run(lib_parser, &self.tests) {
+                if concurrency.run(lib_parser, &tests) {
                     info!("run concurrency group {} succeeded!\n", concurrency.name);
                 }
             }
         }
 
         // run test cases
-        for test in self.tests {
+        for test in tests {
             info!(
                 "Starting run test case: {} with {} thread",
                 test.name, test.thread_num
@@ -212,6 +232,7 @@ impl ConcurrencyGroup {
             .into_par_iter()
             .map(|test| test.run(lib_parser))
             .collect();
+
         let expect_succ_num = results.len();
         let count = results.into_iter().filter(|&x| x).count();
         debug!(

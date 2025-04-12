@@ -157,6 +157,18 @@ cmds = [
     ]
     ```
     **注意**： 需要与其他cmd进行通信的idx位置，最好在cmds中指定而不要放到inputs里面，否则你需要非常小心的保证idx的正确性，当cmds很多的时候这会变得不好维护。
+6. 预设环境测试
+    可以在config中通过envs参数指定预设环境，以及使用此环境的所有测试用例列表。环境包括两个cmd，一个是init，一个是exit。如：
+    ```toml
+    [[envs]]
+    name = "memory_env"
+    init = { opfunc = "Call_malloc", expect_eq = 0, args=["len=10000", "mem_idx=50"] }
+    exit = { opfunc = "Call_free", expect_eq = 0, args=["mem_idx=50"] }
+    tests = ["test_rw_u32", "test_rw_u32_ne"]
+    ```
+    当使用memory_env环境时，会先执行init，然后执行tests中的所有测试用例，最后执行exit。
+    注意： 需要注意的是env使用的idx与属于测试用例线程，保证tests列表的测试用例使用的idx不会与init和exit使用的冲突。
+    如： 示例中的test_rw_u32和test_rw_u32_ne就不能修改mem_idx50的内容。
 
 #### 使用说明
 可以安装rust后重新编译运行，也可以直接使用构建好的二进制直接运行。
