@@ -106,7 +106,6 @@ EXPORT_FUNC(mem_strlen, str_idx)
 {
     CHECK_PARAM_LEN(1);
     IN_RELATIVE_IDX(const char *, str_idx, 0);
-
     return strlen(str_idx);
 }
 
@@ -134,13 +133,16 @@ EXPORT_FUNC(strfill, dst_addr, content, len)
     IN_VALUE(char *, content, 1);
     IN_VALUE(size_t, len, 2);
 
-    if (len < strlen(content))
+    int content_len = strlen(content);
+    if (len <= content_len)
     {
-        fprintf(stderr, "[%s] strfill failed! the content string is too long!\n", __func__);
-        return -1;
+        strncpy(dst_addr, content, len);
+    } else {
+        for (size_t i = 0; i < len; i += content_len) {
+            strncpy(dst_addr + i, content, content_len);
+        }
     }
-
-    strncpy(dst_addr, content, len);
+    dst_addr[len] = '\0';
     return 0;
 }
 
@@ -212,7 +214,7 @@ EXPORT_FUNC(mmap, addr, len, prot, flags, fd_idx, offset, addr_idx)
     int prot = 0;
     if (iprot & BIT(0)) {
         prot |= PROT_READ;
-    } 
+    }
     if (iprot & BIT(1)) {
         prot |= PROT_WRITE;
     }
@@ -224,7 +226,7 @@ EXPORT_FUNC(mmap, addr, len, prot, flags, fd_idx, offset, addr_idx)
     }
 
     if (iflags & BIT(1)) {
-        flags |= MAP_FIXED;    
+        flags |= MAP_FIXED;
     }
 
     if (iflags & BIT(2)) {
