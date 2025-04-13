@@ -11,26 +11,26 @@ hitest是一个通用的读配置文件调接口校验返回值的工具。 与�
 按顺序使用test_case.toml指定的参数和接口调用lib提供的接口并校验返回值。
 
 **注意**
-- 接口全部为 `int (*func)(const long *params, int para_len);`的形式。 参见 sample/libmalloc.c 和 sample/export_function.h.
+- 接口全部为 `int (*func)(u64 *, const u64 *, int );`的形式。 参见 sample/libmalloc.c 和 sample/export_function.h.
 - 如果库文件严格使用sample/export_function.h 中的宏来编写，可以使用scripts/gen_libs_config.py 来自动生成库文件配置文件。
 - 用法：python3 scripts/gen_libs_config.py -f sample/libmalloc.c -o sample/libmalloc.toml [-l ./sample/libmalloc.so]
-    - -l 参数指定库文件的路径，如果不指定则默认为 unix: lib$file_name.so 或者 windows: $file_name.dll。
+    - -l 参数指定库文件的路径，如果不指定则默认为 unix: lib\$file_name.so 或者 windows: \$file_name.dll。
     - -f 指定库函数定义的C文件
     - -o 指定输出的配置文件路径。
 #### export_function.h使用：
-    - EXPORT_FUNC(func_name, param1, param2, ...) 定义一个满足要求的导出函数， param是一个逗号分隔的参数列表标识符， 测试用例需要使用相同的标识符传递， 导出的函数会自动在函数签名加上前缀‵Call_`比如：
+- EXPORT_FUNC(func_name, param1, param2, ...) 定义一个满足要求的导出函数， param是一个逗号分隔的参数列表标识符， 测试用例需要使用相同的标识符传递， 导出的函数会自动在函数签名加上前缀‵Call_`比如：
 
-        ```c
-        EXPORT_FUNC(malloc, len, mem_idx)  // 定义一个导出函数Call_malloc， 该函数需要两个参数， 第一个参数是len， 第二个参数是mem_idx。
-        // 对应测试用例为： { opfunc = "Call_malloc", expect_eq = 0, args = ["len=100", "mem_idx=1"] }, 这里的100和1是参数的值， 由测试用例编写者确定
-        ```
-    - CHECK_PARAM_LEN(len) 检查参测试用例的参数数量是否等于len， 如果不等于则返回-12。
-    - GET_INPUT_IDX_NZ(type, name, param_idx) 获取测试用例的参数中的第param_idx个参数的值， 这个数值要求非0， 且必须是其他导出函数写入之后的。
-    - GET_INPUT_IDX(type, name, param_idx) 获取测试用例的参数中的第param_idx个参数的值， 这个数值可以是0， 也是其他导出函数写入的。
-    - GET_VALUE(type, name, param_idx) 获取测试用例的参数中的name参数的值， 这个数值是由测试用例直接指定的。
-    - SET_OUTPUT_IDX(idx, value) 把输出数值写入到共享内存页param_page的第idx个dword中。用于给其他导出函数使用。
-    具体这些宏的使用可以参考sample/export_function.h和sample/libmalloc.c。
-    - 注意： 测试用例需要严格按照参数列表的参数名字提供调用函数的参数。 可以运行 `hitest --sample` 之后，在cfgs目录下查看tc_libmalloc.toml的内容, 这个文件是一个简单的测试用例。
+    ```c
+    EXPORT_FUNC(malloc, len, mem_idx)  // 定义一个导出函数Call_malloc， 该函数需要两个参数， 第一个参数是len， 第二个参数是mem_idx。
+    // 对应测试用例为： { opfunc = "Call_malloc", expect_eq = 0, args = ["len=100", "mem_idx=1"] }, 这里的100和1是参数的值， 由测试用例编写者确定
+    ```
+- `CHECK_PARAM_LEN(len)` 检查参测试用例的参数数量是否等于len， 如果不等于则返回-12。
+- `GET_INPUT_IDX_NZ(type, name, param_idx)` 获取测试用例的参数中的第param_idx个参数的值， 这个数值要求非0， 且必须是其他导出函数写入之后的。
+- `GET_INPUT_IDX(type, name, param_idx)` 获取测试用例的参数中的第param_idx个参数的值， 这个数值可以是0， 也是其他导出函数写入的。
+- `GET_VALUE(type, name, param_idx)` 获取测试用例的参数中的name参数的值， 这个数值是由测试用例直接指定的。
+- `SET_OUTPUT_IDX(idx, value)` 把输出数值写入到共享内存页`param_page`的第idx个dword中。用于给其他导出函数使用。
+具体这些宏的使用可以参考sample/export_function.h和sample/libmalloc.c。
+- 注意： 测试用例需要严格按照参数列表的参数名字提供调用函数的参数。 可以运行 `hitest --sample` 之后，在cfgs目录下查看tc_libmalloc.toml的内容, 这个文件是一个简单的测试用例。
 ### 库文件编写
 库文件提供方需提供库的二进制文件和包含该二进制元信息的配置文件。库文件支持C/C++导出的*.so或者*.dll。
 - **二进制文件**
@@ -38,8 +38,8 @@ hitest是一个通用的读配置文件调接口校验返回值的工具。 与�
 二进制中将需要调的接口封装成`int *(func_name)(uint64_t *param_page, const uint64_t *params, int params_len) `的形式。
 - param_page是测试程序预先分配的一个本线程独占的内存页，用于多个接口之间通信。
 - params是测试程序提供的参数数组，一般是：
-    - 魔鬼数字， 比如长度、param_page的dword索引等。
-    - 字符串地址，当测试用例的参数使用 ''包裹时，测试程序会将字符串写入该地址。
+- 魔鬼数字， 比如长度、param_page的dword索引等。
+- 字符串地址，当测试用例的参数使用 ''包裹时，测试程序会将字符串写入该地址。
 - params_len是测试用例提供的参数的数量，库文件编写人员可以使用此长度对测试用例的合法性做一个简单校验。
 SDK 库warrper的编写参见sample/libmalloc.c， 这是一个简单的libc warrper库，提供了一些常用的内存管理函数。
 
@@ -94,7 +94,8 @@ cmds = [
 ```
 **注意**： expect_eq和expect_ne必须指定其中一个且不能同时指定。
 
-2. 并发测试用例，支持两种模式，一种是同一个用例指定并发数，另一种是指定不同的测试用例之间并发。
+2. **并发测试用例**
+支持两种模式，一种是同一个用例指定并发数，另一种是指定不同的测试用例之间并发。
 
     1. 用一个test并发，在test下指定thread_num参数即可，如：
     ```toml
@@ -112,15 +113,19 @@ cmds = [
     ```
     执行时将以100个线程并发执行test_rw_u32用例。
 
-    2. 不同的Test之间并发，新增concurrences参数，指定并发的用例列表，如：
+    2. 不同的Test之间并发，在全局使用concurrences参数指定并发的用例列表，如：
     ```toml
     concurrences = [
     { tests = ["test_rw_u32", "Test_str_fill"], name = "group1" },
+    { tests = ["test1", "test2"], name = "group2"},
     ]
     ```
-    执行时将以不同的线程并发执行test_rw_u32和Test_str_fill用例, 注意，这里的用例名称必须与tests下的用例名称一致。
+    执行时将以不同的线程并发执行test_rw_u32和Test_str_fill用例然后用不同的线程并发执行test1和test2用例。
+    **注意**
+    1. 这里的用例名称必须与tests下的用例名称一致。
+    2. 放到concurrences的用例只在concurrency环境下执行，不会另外执行。
 
-3. 死亡测试
+3. **死亡测试**
     死亡测试用例，用于测试程序的崩溃情况，可以指定should_panic参数，当should_panic=true时，测试用例将被认为是一个死亡测试用例，
     会将测试用例单独放入子进程执行 ，如果子进程崩溃，则认为测试用例通过。
     如：
@@ -136,7 +141,7 @@ cmds = [
     { opfunc = "Call_read32", expect_eq = 888, args = ["addr_idx=1", ] },
     ]
     ```
-4. 性能测试
+4. **性能测试**
     可以在cmds中需要统计性能的cmd内指定perf=true, 此时会报告该cmd的执行时间。
     ```toml
     [[tests]]
@@ -149,8 +154,8 @@ cmds = [
     { opfunc = "Call_free", expect_eq = 0, perf=true, args = ["mem_idx=1"] },
     ]
     ```
-
-5. 多组输入测试
+    **注**： 可以向C库直接输入C风格字符串，方法为参数的‘=’后面用单引号包裹想输入的字符串。 参见sample模式的`Test_str_fill`。
+5. **多组输入测试**
     可以在Test中新增通过inputs参数指定多组输入，并且在cmds中使用${para_name}来引用输入参数。
     每一组参数可以指定多个输入参数，以及本组参数的组名用于报告执行结果， 不指定组名时，自动命名为default1, default2, ...
     如：
