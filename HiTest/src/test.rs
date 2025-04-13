@@ -2,11 +2,11 @@ use super::{Cmd, Condition};
 use log::{error, info};
 #[cfg(unix)]
 use nix::{sys::wait::waitpid, sys::wait::WaitStatus, unistd::fork, unistd::ForkResult};
-#[cfg(unix)]
-use std::process::exit;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::Deserialize;
 use std::collections::HashMap;
+#[cfg(unix)]
+use std::process::exit;
 
 fn default_input_name() -> String {
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -221,4 +221,67 @@ fn replace_vars(s: String, vars: &HashMap<String, String>) -> String {
         result = result.replace(&format!("$!{}", k), &format!("!{}", v));
     }
     result
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_replace_vars() {
+        let mut vars = HashMap::new();
+        vars.insert("size".into(), "100".into());
+        let result = replace_vars("len=$size".into(), &vars);
+        assert_eq!(result, "len=100");
+    }
+
+    #[test]
+    fn test_replace_negated_vars() {
+        let mut vars = HashMap::new();
+        vars.insert("val".into(), "123".into());
+        let result = replace_vars("expect=$!val".into(), &vars);
+        assert_eq!(result, "expect=!123");
+    }
+
+    #[test]
+    fn test_process_input_groups() {
+        let test = Test {
+            name: "input_test".to_string(),
+            cmds: vec![Cmd {
+                opfunc: "test_func".to_string(),
+                condition: Condition::Eq("$val".to_string()),
+                args: vec!["arg=$val".to_string()],
+                perf: false,
+            }],
+            thread_num: 1,
+            should_panic: false,
+            break_if_fail: true,
+            inputs: vec![
+                InputGroup {
+                    name: "test_input0".to_string(),
+                    args: [("val".to_string(), "123".to_string())]
+                        .iter()
+                        .cloned()
+                        .collect(),
+                    should_panic: None,
+                    break_if_fail: None,
+                },
+                InputGroup {
+                    name: "test_input1".to_string(),
+                    args: [("val".to_string(), "456".to_string())]
+                        .iter()
+                        .cloned()
+                        .collect(),
+                    should_panic: None,
+                    break_if_fail: None,
+                },
+            ],
+        };
+        let processed = test.process_input_group();
+        assert_eq!(processed.len(), 2);
+        assert_eq!(processed[0].name, "input_test_test_input0");
+        assert_eq!(processed[1].name, "input_test_test_input1");
+    }
+
+
 }
