@@ -53,12 +53,9 @@ impl Config {
         if let Some(concurrences) = self.concurrences {
             info!("Starting run concurrency groups!");
             for mut concurrency in concurrences {
-                total_tests += concurrency.len();
-                if concurrency.run(&tests) {
-                    success_tests += concurrency.success_num();
-                } else {
-                    failed_tests += concurrency.len() - concurrency.success_num();
-                }
+                let (success_num, expect) =  concurrency.run(&tests);
+                total_tests += expect;
+                success_tests += success_num;
                 concurrency.record_test(&mut concurrency_tests);
             }
         }

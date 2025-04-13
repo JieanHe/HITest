@@ -8,28 +8,28 @@ pub struct ConcurrencyGroup {
     tests: Vec<String>,
     #[serde(default = "default_name")]
     name: String,
-    #[serde(default)]
-    success_num: usize,
 }
 fn default_name() -> String {
     String::from("default_group")
 }
 
 impl ConcurrencyGroup {
-    pub fn run(&mut self, tests: &Vec<Test>) -> bool {
+    pub fn run(&mut self, tests: &Vec<Test>) -> (usize, usize) {
         if self.tests.is_empty() {
-            return true;
+            return (0, 0);
         }
 
         let mut test_cases: Vec<Test> = Vec::new();
         for test in tests {
             if self.tests.contains(&test.name) {
-                test_cases.push(test.clone());
+                let mut test = test.clone();
+                test.name = format!("{}_{}", self.name, test.name);
+                test_cases.push(test);
             }
         }
 
         if test_cases.is_empty() {
-            return true;
+            return (0, 0);
         }
 
         debug!(
@@ -54,8 +54,8 @@ impl ConcurrencyGroup {
                 self.name, expect_success_num, count
             );
         }
-        self.success_num = count;
-        return success;
+
+        return (count, expect_success_num);
     }
 
     pub fn record_test(&self, tests: &mut Vec<String>) {
@@ -64,11 +64,5 @@ impl ConcurrencyGroup {
         }
     }
 
-    pub fn len(&self) -> usize {
-        self.tests.len()
-    }
 
-    pub fn success_num(&self) -> usize {
-        self.success_num
-    }
 }
