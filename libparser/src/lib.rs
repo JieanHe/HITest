@@ -211,3 +211,98 @@ impl LibParse {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::NamedTempFile;
+    use std::{io::Write, process::Command};
+
+    extern "C" fn mock_fn(_: *mut u64, _: *const i64, _: i64) -> i64 {
+        0
+    }
+
+    fn create_test_lib_config() -> (NamedTempFile, tempfile::TempDir) {
+        // Create temp dir first
+        let temp_dir = tempfile::tempdir().unwrap();
+
+        // Create C source file with .c extension
+        let c_path = temp_dir.path().join("test_lib.c");
+        let mut c_file = std::fs::File::create(&c_path).unwrap();
+        let c_content = r#"
+            int test_func(long long *page, const long long *param, long long len) {
+                if (len!=2) return -1;
+                return param[0] + param[1];
+            }
+        "#;
+        c_file.write_all(c_content.as_bytes()).unwrap();
+
+        let so_path = temp_dir.path().join("test_lib.so");
+        let status = Command::new("gcc")
+            .arg("--shared")
+            .arg("-fPIC")
+            .arg(&c_path)
+            .arg("-o")
+            .arg(&so_path)
+            .status()
+            .expect("Failed to compile test library");
+
+        assert!(status.success(), "Failed to compile test library");
+        assert!(so_path.exists(), "Library file was not created");
+
+        let mut config_file = NamedTempFile::new().unwrap();
+        let so_path_display = so_path.display().to_string().replace('\\', "/");
+
+        let mock_cfg = format!(r#"
+            [[libs]]
+            path = "{}"
+            funcs = [
+                {{ name = "test_func", paras = ["param1", "param2"] }}
+            ]
+        "#, so_path_display);
+
+        config_file.write_all(mock_cfg.as_bytes()).unwrap();
+
+        (config_file, temp_dir)
+    }
+
+    #[test]
+    fn test_parse_params() {
+        let fn_attr = FnAttr {
+            fnptr: mock_fn,
+            paras: vec!["param1".to_string(), "param2".to_string()]
+        };
+
+        let params = vec!["param1=123".to_string(), "param2=456".to_string()];
+        let result = fn_attr.parse_params(&params);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), vec![123, 456]);
+
+        let params = vec!["param1=123".to_string()];
+        assert!(fn_attr.parse_params(&params).is_err());
+    }
+
+    #[test]
+    fn test_lib_parse_new() {
+        let (config_file, _temp_dir) = create_test_lib_config();
+        let parser = LibParse::new(config_file.path().to_str().unwrap());
+        if let Err(e) = &parser {
+            println!("Parser error: {}", e);
+        }
+
+        assert!(parser.is_ok());
+        let parser = parser.unwrap();
+        assert!(parser.get_func("test_func").is_ok());
+        assert!(parser.get_func("non_exist_func").is_err());
+    }
+
+    #[test]
+    fn tets_run_func() {
+        let (config_file, _temp_dir) = create_test_lib_config();
+        let parser = LibParse::new(config_file.path().to_str().unwrap()).unwrap();
+        let params = vec!["param1=123".to_string(), "param2=456".to_string()];
+        let res= parser.execute("test_func".to_string(), &params).unwrap();
+        println!("res=={}", res);
+        assert!(res == 579i64);
+    }
+}
