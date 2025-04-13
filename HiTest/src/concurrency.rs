@@ -37,13 +37,10 @@ impl ConcurrencyGroup {
             self.name, self.tests
         );
 
-        let results: Vec<_> = test_cases
-            .into_par_iter()
-            .map(|test| test.run())
-            .collect();
+        let results: Vec<_> = test_cases.into_par_iter().map(|test| test.run()).collect();
 
         let expect_success_num = results.len();
-        let count = results.into_iter().filter(|&x| x).count();
+        let count = results.into_iter().filter(|&(s, t)| s == t).count();
 
         let success = count as usize == expect_success_num;
         if success {
@@ -103,5 +100,4 @@ mod tests {
         assert_eq!(config.concurrences.clone().unwrap().len(), 1);
         assert_eq!(config.concurrences.unwrap()[0].tests.len(), 2);
     }
-
 }
