@@ -22,7 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .join(&run_args.libs_cfg);
 
     let lib_cfg_path = lib_cfg_path.to_str().unwrap();
-    let lib_parser = LibParse::new(&lib_cfg_path).unwrap();
+    LibParse::init(&lib_cfg_path).unwrap();
 
     // checking config file of test cases
     let config_content: String = fs::read_to_string(&run_args.test_cfg).expect(&format!(
@@ -43,6 +43,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // run test cases
-    config.run(&lib_parser);
+    config.run();
     Ok(())
 }

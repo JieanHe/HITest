@@ -1,15 +1,18 @@
 use libparser::{FnAttr, LibParse};
 use log::{debug, error, info};
 #[cfg(unix)]
-use nix::{libc, sys::wait::waitpid, sys::wait::WaitStatus, unistd::fork, unistd::ForkResult};
-use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
+use nix::{sys::wait::waitpid, sys::wait::WaitStatus, unistd::fork, unistd::ForkResult};
 use rayon::prelude::*;
 use serde::{de::Error as DError, Deserialize, Deserializer};
 use std::collections::HashMap;
 use std::{error::Error, io::Write};
+use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 #[cfg(unix)]
 use std::process::exit;
+
+mod concurrency;
+use concurrency::ConcurrencyGroup;
 
 #[derive(Debug, Deserialize, Clone)]
 struct Env {
@@ -26,13 +29,6 @@ pub struct Config {
     #[serde(default)]
     envs: Vec<Env>,
     tests: Vec<Test>,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-struct ConcurrencyGroup {
-    tests: Vec<String>,
-    #[serde(default = "default_name")]
-    name: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -74,10 +70,6 @@ fn default_true() -> bool {
 
 fn default_one() -> i64 {
     1
-}
-
-fn default_name() -> String {
-    String::from("default_group")
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -134,8 +126,17 @@ impl<'de> Deserialize<'de> for Condition {
     }
 }
 
+pub fn replace_vars(s: String, vars: &HashMap<String, String>) -> String {
+    let mut result = s;
+    for (k, v) in vars {
+        result = result.replace(&format!("${}", k), v);
+        result = result.replace(&format!("$!{}", k), &format!("!{}", v));
+    }
+    result
+}
+
 impl Config {
-    pub fn run(self, lib_parser: &LibParse) {
+    pub fn run(self) {
         if self.tests.is_empty() {
             info!("no test cases be find, do nothing!");
             return;
@@ -145,35 +146,50 @@ impl Config {
         let mut success_tests = 0;
         let mut failed_tests = 0;
 
-        let tests = self.tests.into_iter().map(|mut test| {
-            for env in &self.envs {
-                if env.tests.contains(&test.name) {
-                    test.cmds.insert(0, env.init.clone());
-                    test.cmds.push(env.exit.clone());
-                    debug!("add env {} to test case {}", env.name, test.name);
+        let tests = self
+            .tests
+            .into_iter()
+            .map(|mut test| {
+                for env in &self.envs {
+                    if env.tests.contains(&test.name) {
+                        test.cmds.insert(0, env.init.clone());
+                        test.cmds.push(env.exit.clone());
+                        debug!("add env {} to test case {}", env.name, test.name);
+                    }
                 }
-            }
-            test
-        }).collect::<Vec<_>>();
+                test
+            })
+            .collect::<Vec<_>>();
 
         // run concurrency group
+        let mut concurrency_tests: Vec<String> = Vec::new();
         if let Some(concurrences) = self.concurrences {
             info!("Starting run concurrency groups!");
-            for concurrency in concurrences {
-                if concurrency.run(lib_parser, &tests) {
-                    info!("run concurrency group {} succeeded!\n", concurrency.name);
+            for mut concurrency in concurrences {
+                total_tests += concurrency.len();
+                if concurrency.run(&tests) {
+                    success_tests += concurrency.success_num();
+                } else {
+                    failed_tests += concurrency.len() - concurrency.success_num();
                 }
+                concurrency.record_test(&mut concurrency_tests);
             }
         }
 
-        // run test cases
+        // filter out concurrency test cases
+        let tests = tests
+            .into_iter()
+            .filter(|test| !concurrency_tests.contains(&test.name))
+            .collect::<Vec<_>>();
+
+        // run remaining test cases
         for test in tests {
             info!(
                 "Starting run test case: {} with {} thread",
                 test.name, test.thread_num
             );
 
-            let test_result = test.run(lib_parser);
+            let test_result = test.run();
             total_tests += 1;
             if test_result {
                 success_tests += 1;
@@ -191,81 +207,33 @@ impl Config {
 
         let mut stdout = StandardStream::stdout(ColorChoice::Always);
         if failed_tests == 0 {
-            stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green))).unwrap();
+            stdout
+                .set_color(ColorSpec::new().set_fg(Some(Color::Green)))
+                .unwrap();
         } else {
-            stdout.set_color(ColorSpec::new().set_fg(Some(Color::Red))).unwrap();
+            stdout
+                .set_color(ColorSpec::new().set_fg(Some(Color::Red)))
+                .unwrap();
         }
         writeln!(
             stdout,
             "Global Summary: Total tests: {}, Success: {}, Failure: {}",
-            total_tests,
-            success_tests,
-            failed_tests
+            total_tests, success_tests, failed_tests
         )
-       .unwrap();
+        .unwrap();
         stdout.reset().unwrap();
-    }
-}
-
-impl ConcurrencyGroup {
-    pub fn run(&self, lib_parser: &LibParse, tests: &Vec<Test>) -> bool {
-        if self.tests.is_empty() {
-            return true;
-        }
-
-        let mut test_cases: Vec<Test> = Vec::new();
-        for test in tests {
-            if self.tests.contains(&test.name) {
-                test_cases.push(test.clone());
-            }
-        }
-
-        if test_cases.is_empty() {
-            return true;
-        }
-        debug!(
-            "Concurrency Group {} Contains test cases: {:#?}",
-            self.name, self.tests
-        );
-
-        let results: Vec<_> = test_cases
-            .into_par_iter()
-            .map(|test| test.run(lib_parser))
-            .collect();
-
-        let expect_succ_num = results.len();
-        let count = results.into_iter().filter(|&x| x).count();
-        debug!(
-            "Parallel execute concurrency Group {} with {} thread, {} passed!",
-            self.name, expect_succ_num, count
-        );
-
-        let succ = count as usize == expect_succ_num;
-        if succ {
-            info!(
-                "Parallel execute concurrency Group {} with {} thread, all passed!",
-                self.name, expect_succ_num
-            );
-        } else {
-            error!(
-                "Parallel execute concurrency Group {} with {} thread, {} passed!",
-                self.name, expect_succ_num, count
-            );
-        }
-
-        return succ;
     }
 }
 
 impl Test {
     #[cfg_attr(not(unix), allow(unused_variables), allow(unused_mut))]
-    fn check_panic(mut child_test: Self, lib_parser: &LibParse) -> bool {
+    fn check_panic(mut child_test: Self) -> bool {
         #[cfg(unix)]
         match unsafe { fork() } {
             Ok(ForkResult::Child) => {
                 child_test.thread_num = 1;
                 child_test.should_panic = false;
-                let _res = child_test.run_one_thread(lib_parser);
+                let _res = child_test.run_one_thread();
                 exit(0);
             }
             Ok(ForkResult::Parent { child }) => {
@@ -304,27 +272,11 @@ impl Test {
         }
     }
 
-    fn run_one_thread(&self, lib_parser: &LibParse) -> bool {
+    fn run_one_thread(&self) -> bool {
         let mut all_success = true;
-
+        let lib_parser = LibParse::get_instance().unwrap().read().unwrap();
         for cmd in self.cmds.clone() {
-            let fn_attr = match lib_parser.get_func(&cmd.opfunc) {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("execute cmd {} failed! Error: {}\n", &cmd.opfunc, e);
-                    return false;
-                }
-            };
-
-            let paras = match fn_attr.parse_params(&cmd.args) {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("execute cmd {} failed! Error: {}\n", &cmd.opfunc, e);
-                    return false;
-                }
-            };
-
-            match cmd.run(&lib_parser, &fn_attr, &paras, &HashMap::new()) {
+            match cmd.run() {
                 Ok(v) => {
                     if !v {
                         all_success = false;
@@ -352,27 +304,27 @@ impl Test {
         all_success
     }
 
-    fn run(&self, lib_parser: &LibParse) -> bool {
+    fn run(&self) -> bool {
         let tests = if self.inputs.is_empty() {
             vec![self.clone()]
         } else {
             self.inputs
-               .iter()
-               .map(|input| {
+                .iter()
+                .map(|input| {
                     let mut test = self.clone();
                     test.inputs = vec![];
                     test.break_if_fail = input.break_if_fail.unwrap_or(self.break_if_fail);
                     test.should_panic = input.should_panic.unwrap_or(self.should_panic);
                     test.name = format!("{}_{}", self.name, input.name);
                     test.cmds = test
-                       .cmds
-                       .iter()
-                       .map(|cmd| {
+                        .cmds
+                        .iter()
+                        .map(|cmd| {
                             let resolved_args = cmd
-                               .args
-                               .iter()
-                               .map(|arg| replace_vars(arg.clone(), &input.args))
-                               .collect();
+                                .args
+                                .iter()
+                                .map(|arg| replace_vars(arg.clone(), &input.args))
+                                .collect();
 
                             let condition = match &cmd.condition {
                                 Condition::Eq(s) => {
@@ -394,30 +346,30 @@ impl Test {
                                 perf: cmd.perf,
                             }
                         })
-                       .collect();
+                        .collect();
 
                     test
                 })
-               .collect()
+                .collect()
         };
 
         let tests: Vec<_> = tests
-           .into_iter()
-           .flat_map(|test| (0..self.thread_num).map(move |_| test.clone()))
-           .collect();
+            .into_iter()
+            .flat_map(|test| (0..self.thread_num).map(move |_| test.clone()))
+            .collect();
 
         let results: Vec<_> = tests
-           .into_par_iter()
-           .map(|test| {
+            .into_par_iter()
+            .map(|test| {
                 if test.should_panic {
                     let mut child_test = test.clone();
                     child_test.should_panic = false;
-                    Test::check_panic(child_test, lib_parser)
+                    Test::check_panic(child_test)
                 } else {
-                    test.run_one_thread(lib_parser)
+                    test.run_one_thread()
                 }
             })
-           .collect();
+            .collect();
 
         let total_count = results.len();
         let success_count = results.iter().filter(|&&x| x).count();
@@ -425,11 +377,20 @@ impl Test {
 
         let mut stdout = StandardStream::stdout(ColorChoice::Always);
         if failure_count == 0 {
-            stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green))).unwrap();
+            stdout
+                .set_color(ColorSpec::new().set_fg(Some(Color::Green)))
+                .unwrap();
         } else {
-            stdout.set_color(ColorSpec::new().set_fg(Some(Color::Yellow))).unwrap();
+            stdout
+                .set_color(ColorSpec::new().set_fg(Some(Color::Yellow)))
+                .unwrap();
         }
-        writeln!(stdout, "Test case {} run tests: {}, Success: {}, Failure: {}", self.name, total_count, success_count, failure_count).unwrap();
+        writeln!(
+            stdout,
+            "Test case {} run tests: {}, Success: {}, Failure: {}",
+            self.name, total_count, success_count, failure_count
+        )
+        .unwrap();
         stdout.reset().unwrap();
 
         success_count == total_count
@@ -437,28 +398,15 @@ impl Test {
 }
 
 impl Cmd {
-    pub fn run(
-        &self,
-        lib_parser: &LibParse,
-        fn_attr: &FnAttr,
-        paras: &Vec<i64>,
-        input_vars: &HashMap<String, String>,
-    ) -> Result<bool, Box<dyn Error>> {
-        #[cfg(target_os = "linux")]
-        let start = high_precision_time();
-        #[cfg(not(target_os = "linux"))]
-        let start = std::time::Instant::now();
-
-        let ret = lib_parser.call_func_attr(fn_attr, paras)?;
-
-        #[cfg(target_os = "linux")]
-        let duration = high_precision_time() - start;
-        #[cfg(not(target_os = "linux"))]
-        let duration = start.elapsed();
-
-        if self.perf.unwrap_or(false) {
-            info!("cmd '{}' executed cost {:?}", self.opfunc, duration);
-        }
+    pub fn run(&self) -> Result<bool, Box<dyn Error>> {
+        let lib_parser = LibParse::get_instance()?.read().unwrap();
+        let ret: i64 = if self.perf.unwrap_or(false) {
+            let (ans, perf) = lib_parser.execute_with_perf(self.opfunc.clone(), &self.args)?;
+            info!("cmd '{}' executed cost {}", self.opfunc, perf);
+            ans
+        } else {
+            lib_parser.execute(self.opfunc.clone(), &self.args)?
+        };
 
         let parse_value = |s: &str| -> Result<i64, Box<dyn Error>> {
             let actual_s = if s.starts_with('!') { &s[1..] } else { s };
@@ -477,19 +425,17 @@ impl Cmd {
 
         let (expected, operator, is_success) = match &self.condition {
             Condition::Eq(v) => {
-                let resolved = replace_vars(v.to_string(), input_vars);
-                let expected = parse_value(&resolved)?;
+                let expected = parse_value(&v)?;
                 if v.starts_with("!") {
                     (expected, "!=", ret != expected)
                 } else {
                     (expected, "==", ret == expected)
                 }
-            },
+            }
             Condition::Ne(v) => {
-                let resolved = replace_vars(v.to_string(), input_vars);
-                let expected = parse_value(&resolved)?;
+                let expected = parse_value(&v)?;
                 (expected, "!=", ret != expected)
-            },
+            }
         };
 
         let message = format!(
@@ -507,25 +453,6 @@ impl Cmd {
     }
 }
 
-#[cfg(target_os = "linux")]
-fn high_precision_time() -> std::time::Duration {
-    use std::mem::MaybeUninit;
-    let mut ts = MaybeUninit::<libc::timespec>::uninit();
-    unsafe {
-        libc::clock_gettime(libc::CLOCK_MONOTONIC_RAW, ts.as_mut_ptr());
-        let ts = ts.assume_init();
-        std::time::Duration::new(ts.tv_sec as u64, ts.tv_nsec as u32)
-    }
-}
-
-fn replace_vars(s: String, vars: &HashMap<String, String>) -> String {
-    let mut result = s;
-    for (k, v) in vars {
-        result = result.replace(&format!("${}", k), v);
-        result = result.replace(&format!("$!{}", k), &format!("!{}", v));
-    }
-    result
-}
 #[cfg(test)]
 mod tests {
 
@@ -602,58 +529,6 @@ mod tests {
 
         let result = replace_vars("test_$var1_$var2".to_string(), &vars);
         assert_eq!(result, "test_value1_value2");
-    }
-
-    #[test]
-    fn test_concurrency_group() {
-        let config_content = r#"
-        concurrences = [
-            { tests = ["test1", "test2"], name = "group1" }
-        ]
-
-        [[tests]]
-        name = "test1"
-        thread_num=1
-        cmds = []
-
-        [[tests]]
-        name = "test2"
-        thread_num=1
-        cmds = []
-        "#;
-
-        let config: Config = toml::from_str(config_content).unwrap();
-        assert_eq!(config.concurrences.unwrap()[0].name, "group1");
-    }
-
-    #[test]
-    fn test_parse_config_with_concurrency() {
-        let config_content = r#"
-        concurrences = [
-            { tests = ["test_rw_u32", "Test_str_fill"], name = "group1" },
-            ]
-
-        [[tests]]
-        name = "test_rw_u32"
-        thread_num=100
-        cmds = [
-
-            { opfunc = "my_malloc", expect_eq = 0, args = ["len=100", "mem_idx=1"] },
-            { opfunc = "my_write32", expect_eq = 0, args = ["mem_idx=1", "offset=0", "val=888"] },
-        ]
-
-        [[tests]]
-        name = "Test_str_fill"
-        thread_num=100
-        cmds = [
-
-            { opfunc = "my_malloc", expect_eq = 0, args = ["len=100", "mem_idx=1"] },
-            { opfunc = "my_write32", expect_eq = 0, args = ["mem_idx=1", "offset=0", "val=888"] },
-        ]"#;
-
-        let config: Config = toml::from_str(config_content).unwrap();
-        assert_eq!(config.concurrences.clone().unwrap().len(), 1);
-        assert_eq!(config.concurrences.unwrap()[0].name, "group1");
     }
 
     #[test]
