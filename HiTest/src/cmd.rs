@@ -69,3 +69,43 @@ impl Cmd {
         Ok(is_success)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cmd_creation() {
+        let cmd_str1 = r#"
+            opfunc = "Call_malloc"
+            expect_eq = 0
+            args = ["len=$alloc_size", "mem_idx=1"]
+        "#;
+
+        let cmd_str2 = r#"
+            opfunc = "Call_malloc"
+            expect_eq = 0
+            perf = true
+            args = ["len=$alloc_size", "mem_idx=1"]
+        "#;
+
+        let cmd_str3 = r#"
+            opfunc = "Call_malloc"
+            expect_ne = 0
+            perf = true
+            args = ["len=$alloc_size", "mem_idx=1"]
+        "#;
+
+        let cmd1: Cmd = toml::from_str(cmd_str1).unwrap();
+        assert_eq!(cmd1.opfunc, "Call_malloc");
+        assert!(matches!(cmd1.condition, Condition::Eq(_)));
+        assert_eq!(cmd1.args.len(), 2);
+        assert!(!cmd1.perf);
+
+        let cmd2: Cmd = toml::from_str(cmd_str2).unwrap();
+        assert!(cmd2.perf);
+
+        let cmd3: Cmd = toml::from_str(cmd_str3).unwrap();
+        assert!(matches!(cmd3.condition, Condition::Ne(_)));
+    }
+}
