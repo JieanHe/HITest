@@ -13,10 +13,24 @@ hitest是一个通用的读配置文件调接口校验返回值的工具。 与�
 **注意**
 - 接口全部为 `int (*func)(const long *params, int para_len);`的形式。 参见 sample/libmalloc.c 和 sample/export_function.h.
 - 如果库文件严格使用sample/export_function.h 中的宏来编写，可以使用scripts/gen_libs_config.py 来自动生成库文件配置文件。
-- 用法：python3 scripts/gen_libs_config.py -f sample/libmalloc.c -o sample/libmalloc.toml [-l ./sample]
-    - -l参数指定库文件的路径，默认为当前目录。
+- 用法：python3 scripts/gen_libs_config.py -f sample/libmalloc.c -o sample/libmalloc.toml [-l ./sample/libmalloc.so]
+    - -l 参数指定库文件的路径，如果不指定则默认为 unix: lib$file_name.so 或者 windows: $file_name.dll。
     - -f 指定库函数定义的C文件
     - -o 指定输出的配置文件路径。
+#### export_function.h使用：
+    - EXPORT_FUNC(func_name, param1, param2, ...) 定义一个满足要求的导出函数， param是一个逗号分隔的参数列表标识符， 测试用例需要使用相同的标识符传递， 导出的函数会自动在函数签名加上前缀‵Call_`比如：
+
+        ```c
+        EXPORT_FUNC(malloc, len, mem_idx)  // 定义一个导出函数Call_malloc， 该函数需要两个参数， 第一个参数是len， 第二个参数是mem_idx。
+        // 对应测试用例为： { opfunc = "Call_malloc", expect_eq = 0, args = ["len=100", "mem_idx=1"] }, 这里的100和1是参数的值， 由测试用例编写者确定
+        ```
+    - CHECK_PARAM_LEN(len) 检查参测试用例的参数数量是否等于len， 如果不等于则返回-12。
+    - GET_INPUT_IDX_NZ(type, name, param_idx) 获取测试用例的参数中的第param_idx个参数的值， 这个数值要求非0， 且必须是其他导出函数写入之后的。
+    - GET_INPUT_IDX(type, name, param_idx) 获取测试用例的参数中的第param_idx个参数的值， 这个数值可以是0， 也是其他导出函数写入的。
+    - GET_VALUE(type, name, param_idx) 获取测试用例的参数中的name参数的值， 这个数值是由测试用例直接指定的。
+    - SET_OUTPUT_IDX(idx, value) 把输出数值写入到共享内存页param_page的第idx个dword中。用于给其他导出函数使用。
+    具体这些宏的使用可以参考sample/export_function.h和sample/libmalloc.c。
+    - 注意： 测试用例需要严格按照参数列表的参数名字提供调用函数的参数。 可以运行 `hitest --sample` 之后，在cfgs目录下查看tc_libmalloc.toml的内容, 这个文件是一个简单的测试用例。
 ### 库文件编写
 库文件提供方需提供库的二进制文件和包含该二进制元信息的配置文件。库文件支持C/C++导出的*.so或者*.dll。
 - **二进制文件**
@@ -43,7 +57,7 @@ SDK 库warrper的编写参见sample/libmalloc.c， 这是一个简单的libc war
     2. 二进制库所有导出函数的信息，包括函数名、参数数组中各个参数的名字。
     **注意** 参数数组中各个参数的名字必须按照参数的顺序依次给出，并且不能有重复的名字。
     并且含义需与测试用例编写人员约定一致。测试用例需要严格按照参数列表的参数名字提供调用函数的参数。
-    可以运行 `hitest --sample` 之后，在sample目录下查看libmalloc.toml的内容。
+    可以运行 `hitest --sample` 之后，在cfgs目录下查看libmalloc.toml的内容。
 
 #### 用例
 用例需按照业务逻辑，以及与库约定的参数含义，指明调用库文件接口的顺序和参数，并指明期望的接口返回值。
