@@ -126,6 +126,7 @@ EXPORT_FUNC(strcmp, str1, str2)
     return strcmp(str1, str2);
 }
 
+// caller should make sure length of dse_addr must not less than len!
 EXPORT_FUNC(strfill, dst_addr, content, len)
 {
     CHECK_PARAM_LEN(3);
