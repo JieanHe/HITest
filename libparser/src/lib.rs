@@ -7,8 +7,6 @@ use std::{
     ffi::CString,
     fs,
     os::raw::c_longlong,
-    path::{Path, PathBuf},
-    process::Command,
     sync::Arc,
 };
 use toml;
@@ -134,35 +132,6 @@ static mut LIB_PARSER_INSTANCE: Option<RwLock<LibParse>> = None;
 static INIT: Once = Once::new();
 
 impl LibParse {
-    // for test only
-    #[cfg(test)]
-    pub fn new_with_mock() -> Self {
-        extern "C" fn mock_fn(_: *mut u64, _: *const i64, _: i64) -> i64 {
-            0
-        }
-
-        let mut funcs = HashMap::new();
-        funcs.insert(
-            "test_func".to_string(),
-            Arc::new(Box::new(FnAttr {
-                fnptr: mock_fn,
-                paras: vec!["param1".to_string(), "param2".to_string()],
-            })),
-        );
-
-        LibParse {
-            funcs,
-            libs: Vec::new(),
-        }
-    }
-
-    pub fn get_func(&self, name: &str) -> Result<Arc<Box<FnAttr>>, Box<dyn Error>> {
-        match self.funcs.get(name) {
-            Some(arc_box_func_attr) => Ok(arc_box_func_attr.clone()),
-            None => Err(format!("Function '{}' not found", name).into()),
-        }
-    }
-
     pub fn execute(
         &self,
         fn_name: String,
@@ -199,7 +168,6 @@ impl LibParse {
     }
 
     pub fn get_instance() -> Result<&'static RwLock<LibParse>, Box<dyn Error>> {
-
         unsafe {
             LIB_PARSER_INSTANCE
                 .as_ref()
@@ -235,49 +203,11 @@ impl LibParse {
 
         Ok(LibParse { libs, funcs })
     }
-}
 
-pub fn compile_lib(file: PathBuf, out_dir: &str) {
-    let file_name = file
-        .file_name()
-        .expect(&format!("invlaid file {:?}", &file))
-        .to_str()
-        .and_then(|s| s.split('.').next())
-        .unwrap();
-
-    let target = if cfg!(unix) {
-        format!("{}.so", file_name)
-    } else if cfg!(windows) {
-        format!("{}.dll", file_name)
-    } else {
-        panic!("Unsupported platform");
-    };
-    let target = format!("{}/{}", out_dir, target);
-
-    let compiler = "gcc";
-
-    let status = Command::new(compiler)
-        .arg("--shared")
-        .arg("-fPIC")
-        .arg(file)
-        .arg("-o")
-        .arg(&target)
-        .status();
-
-    match status {
-        Ok(exit_status) => {
-            if exit_status.success() {
-                if Path::new(&target).exists() {
-                    println!("Library file was created successfully.");
-                } else {
-                    println!("Library file was not created.");
-                }
-            } else {
-                println!("Command failed to executed.");
-            }
-        }
-        Err(e) => {
-            eprintln!("Failed to execute command: {}", e);
+    fn get_func(&self, name: &str) -> Result<Arc<Box<FnAttr>>, Box<dyn Error>> {
+        match self.funcs.get(name) {
+            Some(arc_box_func_attr) => Ok(arc_box_func_attr.clone()),
+            None => Err(format!("Function '{}' not found", name).into()),
         }
     }
 }

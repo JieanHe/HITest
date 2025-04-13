@@ -1,5 +1,5 @@
-use libparser::compile_lib;
-use std::{fs::File, io::Write, path::Path, process::Command};
+use std::path::{Path, PathBuf};
+use std::{fs::File, io::Write, process::Command};
 
 pub fn prepare_sample_files() -> (String, String) {
     let libmalloc = Path::new("./sample/libmalloc.c").to_path_buf();
@@ -151,4 +151,49 @@ inputs = [
     }
 
     (SAMPLE_LIB_CFG.into(), SAMPLE_TEST_CFG.into())
+}
+
+fn compile_lib(file: PathBuf, out_dir: &str) {
+    let file_name = file
+        .file_name()
+        .expect(&format!("invlaid file {:?}", &file))
+        .to_str()
+        .and_then(|s| s.split('.').next())
+        .unwrap();
+
+    let target = if cfg!(unix) {
+        format!("{}.so", file_name)
+    } else if cfg!(windows) {
+        format!("{}.dll", file_name)
+    } else {
+        panic!("Unsupported platform");
+    };
+    let target = format!("{}/{}", out_dir, target);
+
+    let compiler = "gcc";
+
+    let status = Command::new(compiler)
+        .arg("--shared")
+        .arg("-fPIC")
+        .arg(file)
+        .arg("-o")
+        .arg(&target)
+        .status();
+
+    match status {
+        Ok(exit_status) => {
+            if exit_status.success() {
+                if Path::new(&target).exists() {
+                    println!("Library file was created successfully.");
+                } else {
+                    println!("Library file was not created.");
+                }
+            } else {
+                println!("Command failed to executed.");
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to execute command: {}", e);
+        }
+    }
 }
