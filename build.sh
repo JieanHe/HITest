@@ -27,6 +27,8 @@ fi
 echo "拷贝sample和scripts目录..."
 cp -r "${PROJECT_ROOT}/sample" "${RELEASE_DIR}/"
 cp -r "${PROJECT_ROOT}/scripts" "${RELEASE_DIR}/"
+cp -r "${PROJECT_ROOT}/libs" "${RELEASE_DIR}/"
+cp -r "${PROJECT_ROOT}/cfgs" "${RELEASE_DIR}/"
 
 # 设置执行权限
 echo "设置执行权限..."
