@@ -1,5 +1,9 @@
-use super::{Cmd, ConcurrencyGroup, Test, Deserialize, info, debug, Write};
+
+use super::{Cmd, ConcurrencyGroup, Test};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
+use serde::Deserialize;
+use log::{debug, info};
+use std::io::Write;
 
 #[derive(Debug, Deserialize, Clone)]
 struct Env {

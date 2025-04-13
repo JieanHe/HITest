@@ -197,7 +197,9 @@ impl LibParse {
             Ok(())
         }
     }
+
     pub fn get_instance() -> Result<&'static RwLock<LibParse>, Box<dyn Error>> {
+
         unsafe {
             LIB_PARSER_INSTANCE
                 .as_ref()
