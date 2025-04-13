@@ -14,8 +14,8 @@ use std::{
 use toml;
 mod error;
 pub use error::LibError;
-mod utils;
-use utils::Perf;
+mod perf;
+use perf::Perf;
 
 #[derive(Deserialize)]
 struct LibConfig {
