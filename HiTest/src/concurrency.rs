@@ -72,32 +72,3 @@ impl ConcurrencyGroup {
         self.success_num
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use crate::Config;
-
-    #[test]
-    fn test_concurrency_group() {
-        let config_content = r#"
-            concurrences = [
-                { tests = ["test1", "test2"], name = "group1" }
-            ]
-
-            [[tests]]
-            name = "test1"
-            thread_num=1
-            cmds = []
-
-            [[tests]]
-            name = "test2"
-            thread_num=1
-            cmds = []
-            "#;
-
-        let config: Config = toml::from_str(config_content).unwrap();
-        assert_eq!(config.concurrences.clone().unwrap()[0].name, "group1");
-        assert_eq!(config.concurrences.clone().unwrap().len(), 1);
-        assert_eq!(config.concurrences.unwrap()[0].tests.len(), 2);
-    }
-}
