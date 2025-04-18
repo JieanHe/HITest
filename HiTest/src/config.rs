@@ -8,8 +8,8 @@ use std::io::Write;
 #[derive(Debug, Deserialize, Clone)]
 struct Env {
     name: String,
-    init: Cmd,
-    exit: Cmd,
+    init: Vec<Cmd>,
+    exit: Vec<Cmd>,
     tests: Vec<String>,
 }
 
@@ -23,6 +23,19 @@ pub struct Config {
 }
 
 impl Config {
+    fn set_env( test: &mut Test, env: &Env) {
+
+        let init_cmds: Vec<_> = env.init.iter().cloned().collect();
+        for cmd in init_cmds.iter().rev() {
+            test.push_front(cmd.clone());
+        }
+        let exit_cmds: Vec<_> = env.exit.iter().cloned().collect();
+        for cmd in exit_cmds {
+            test.push_back(cmd.clone());
+        }
+        debug!("add env {} to test case {}", env.name, test.name);
+    }
+
     pub fn run(self) {
         if self.tests.is_empty() {
             info!("no test cases be find, do nothing!");
@@ -38,10 +51,8 @@ impl Config {
             .into_iter()
             .map(|mut test| {
                 for env in &self.envs {
-                    if env.tests.contains(&test.name) {
-                        test.push_front(env.init.clone());
-                        test.push_back(env.exit.clone());
-                        debug!("add env {} to test case {}", env.name, test.name);
+                    if env.tests.is_empty() || env.tests.contains(&test.name) {
+                        Self::set_env(&mut test, &env);
                     }
                 }
                 test

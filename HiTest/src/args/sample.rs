@@ -42,18 +42,18 @@ pub fn prepare_sample_files() -> (String, String) {
 
 [[envs]]
 name = "memory_env"
-init = { opfunc = "Call_malloc", expect_eq = 0, args=["len=10000", "mem_idx=50"] }
-exit = { opfunc = "Call_free", expect_eq = 0, args=["mem_idx=50"] }
-tests = ["test_rw_u32", "test_rw_u32_ne"]
+init = [{ opfunc = "Call_malloc", expect_eq = 0, perf=true, args=["len=10000", "mem_idx=50"] },]
+exit = [{ opfunc = "Call_free", expect_eq = 0, perf=true, args=["mem_idx=50"] },]
+tests = []
 
 [[tests]]
 name = "test_rw_u32"
 thread_num=2
 cmds = [
-{ opfunc = "Call_malloc", expect_eq = 0, perf=true, args = ["len=$alloc_size", "mem_idx=1"] },
-{ opfunc = "Call_write32", expect_eq = 0, perf=true, args = ["addr_idx=1", "val=$write_val"] },
-{ opfunc = "Call_read32", expect_eq = "$write_val", perf=true, args = ["addr_idx=1"] },
-{ opfunc = "Call_free", expect_eq = 0, perf=true, args = ["mem_idx=1"] },
+{ opfunc = "Call_malloc", expect_eq = 0,  args = ["len=$alloc_size", "mem_idx=1"] },
+{ opfunc = "Call_write32", expect_eq = 0,  args = ["addr_idx=1", "val=$write_val"] },
+{ opfunc = "Call_read32", expect_eq = "$write_val",  args = ["addr_idx=1"] },
+{ opfunc = "Call_free", expect_eq = 0,  args = ["mem_idx=1"] },
 ]
 inputs = [
 {name = "ipt1", args = { alloc_size = "100", write_val = "888" } },
