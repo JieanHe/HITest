@@ -11,6 +11,8 @@ struct Env {
     init: Vec<Cmd>,
     exit: Vec<Cmd>,
     tests: Vec<String>,
+    #[serde(default)]
+    should_panic: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -32,6 +34,9 @@ impl Config {
         let exit_cmds: Vec<_> = env.exit.iter().cloned().collect();
         for cmd in exit_cmds {
             test.push_back(cmd.clone());
+        }
+        if env.should_panic {
+            test.will_panic();
         }
         debug!("add env {} to test case {}", env.name, test.name);
     }

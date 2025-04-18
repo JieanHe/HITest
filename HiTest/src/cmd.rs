@@ -3,6 +3,7 @@ use libparser::LibParse;
 use log::{debug, error, info};
 use serde::Deserialize;
 use std::error::Error;
+use std::fmt;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Cmd {
@@ -12,6 +13,30 @@ pub struct Cmd {
     pub args: Vec<String>,
     #[serde(default)]
     pub perf: bool,
+}
+
+impl fmt::Display for Cmd {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}(", self.opfunc)?;
+        for (i, arg) in self.args.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", arg)?;
+        }
+        write!(f, ")")?;
+
+        match &self.condition {
+            Condition::Eq(s) => write!(f, " expect_eq={}", s)?,
+            Condition::Ne(s) => write!(f, " expect_ne={}", s)?,
+        }
+
+        if self.perf {
+            write!(f, " [perf]")?;
+        }
+
+        Ok(())
+    }
 }
 
 impl Cmd {
@@ -31,6 +56,8 @@ impl Cmd {
     }
 
     pub fn run(&self) -> Result<bool, Box<dyn Error>> {
+        debug!("start executing cmd {} ", self);
+
         let lib_parser = LibParse::get_instance()?.read().unwrap();
         let ret: i64 = if self.perf {
             let (ans, perf) = lib_parser.execute_with_perf(self.opfunc.clone(), &self.args)?;
@@ -39,7 +66,6 @@ impl Cmd {
         } else {
             lib_parser.execute(self.opfunc.clone(), &self.args)?
         };
-
         let (expected, operator, is_success) = match &self.condition {
             Condition::Eq(v) => {
                 let expected = Cmd::parse_value(&v)?;

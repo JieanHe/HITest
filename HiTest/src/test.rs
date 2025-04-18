@@ -1,5 +1,5 @@
 use super::{Cmd, Condition};
-use log::{error, info};
+use log::{error, debug, info};
 #[cfg(unix)]
 use nix::{sys::wait::waitpid, sys::wait::WaitStatus, unistd::fork, unistd::ForkResult};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -7,6 +7,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 #[cfg(unix)]
 use std::process::exit;
+use std::fmt;
 
 fn default_input_name() -> String {
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -80,6 +81,10 @@ impl Test {
                 return false;
             }
         }
+    }
+
+    pub fn will_panic(&mut self) {
+        self.should_panic = true;
     }
 
     fn run_one_thread(&self) -> bool {
@@ -165,6 +170,7 @@ impl Test {
     }
 
     pub fn run(&self) -> (usize, usize) {
+        debug!("start executing test case {}.",  self);
         let tests = self.process_input_group();
         let tests: Vec<_> = tests
             .into_iter()
@@ -211,6 +217,29 @@ impl Test {
 
     pub fn push_front(&mut self, cmd: Cmd) {
         self.cmds.insert(0, cmd);
+    }
+}
+
+impl fmt::Display for Test {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Test: {}", self.name)?;
+        writeln!(f, "Threads: {}", self.thread_num)?;
+        writeln!(f, "Should Panic: {}", self.should_panic)?;
+        writeln!(f, "Break if Fail: {}", self.break_if_fail)?;
+
+        if !self.inputs.is_empty() {
+            writeln!(f, "Input Groups:")?;
+            for input in &self.inputs {
+                writeln!(f, "  - {}: {:?}", input.name, input.args)?;
+            }
+        }
+
+        writeln!(f, "Commands:")?;
+        for cmd in &self.cmds {
+            writeln!(f, "  - {}", cmd)?;
+        }
+
+        Ok(())
     }
 }
 

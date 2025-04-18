@@ -106,6 +106,13 @@ inputs = [
         #[cfg(unix)]
         {
             test_case += r#"
+[[envs]]
+name = "memory_env"
+init = []
+exit = [{ opfunc = "Call_read32", expect_eq = 0, args=["mem_idx=40"] },] # read an not exist memory
+tests = []
+should_panic = true
+
 
 [[tests]]
 name = "test_dev_mem_page"
