@@ -36,69 +36,139 @@ pub fn prepare_sample_files() -> (String, String) {
 
     {
         #[cfg_attr(not(unix), allow(unused_mut))]
-        let mut test_case: String = r#"concurrences = [
-{ tests = ["test_rw_u32", "Test_str_fill"], name = "group1" },
-]
+        let mut test_case: String = r#"concurrences = [{ tests = ["test_rw_u32", "Test_str_fill"], name = "group1" }]
 
 [[envs]]
-name = "memory_env"
-init = [{ opfunc = "Call_malloc", expect_eq = 0, perf=true, args=["len=10000", "mem_idx=50"] },]
-exit = [{ opfunc = "Call_free", expect_eq = 0, perf=true, args=["mem_idx=50"] },]
+name = "memory_panic_env"
+init = [
+    { opfunc = "Call_malloc", expect_eq = 0, args = [
+        "len=10000",
+        "mem_idx=48",
+    ] },
+    { opfunc = "Call_malloc", expect_eq = 0, args = [
+        "len=10000",
+        "mem_idx=49",
+    ] },
+]
+exit = [
+    { opfunc = "Call_free", expect_eq = 0, args = [
+        "mem_idx=48",
+    ] },
+    { opfunc = "Call_free", expect_eq = 0, args = [
+        "mem_idx=49",
+    ] },
+]
 tests = []
 
 [[tests]]
 name = "test_rw_u32"
-thread_num=2
+thread_num = 2
 cmds = [
-{ opfunc = "Call_malloc", expect_eq = 0,  args = ["len=$alloc_size", "mem_idx=1"] },
-{ opfunc = "Call_write32", expect_eq = 0,  args = ["addr_idx=1", "val=$write_val"] },
-{ opfunc = "Call_read32", expect_eq = "$write_val",  args = ["addr_idx=1"] },
-{ opfunc = "Call_free", expect_eq = 0,  args = ["mem_idx=1"] },
+    { opfunc = "Call_malloc", expect_eq = 0, args = [
+        "len=$alloc_size",
+        "mem_idx=1",
+    ] },
+    { opfunc = "Call_write32", expect_eq = 0, args = [
+        "addr_idx=1",
+        "val=$write_val",
+    ] },
+    { opfunc = "Call_read32", expect_eq = "$write_val", args = [
+        "addr_idx=1",
+    ] },
+    { opfunc = "Call_free", expect_eq = 0, args = [
+        "mem_idx=1",
+    ] },
 ]
 inputs = [
-{name = "ipt1", args = { alloc_size = "100", write_val = "888" } },
-{name = "ipt2", args = { alloc_size = "200", write_val = "999" } },
-{ args = { alloc_size = "50", write_val = "555" } }
+    { name = "ipt1", args = { alloc_size = "100", write_val = "888" } },
+    { name = "ipt2", args = { alloc_size = "200", write_val = "999" } },
+    { args = { alloc_size = "50", write_val = "555" } },
 ]
 
 [[tests]]
 name = "test_rw_u32_ne"
-thread_num=2
+thread_num = 2
 cmds = [
-{ opfunc = "Call_malloc", expect_eq = 0, args = ["len=$alloc_size", "mem_idx=1"] },
-{ opfunc = "Call_write32", expect_eq = 0, args = ["addr_idx=1", "val=$write_val1"] },
-{ opfunc = "Call_read32", expect_eq = "$write_val1", args = ["addr_idx=1"] },
-{ opfunc = "Call_write32", expect_eq = 0, args = ["addr_idx=1", "val=$write_val2"] },
-{ opfunc = "Call_read32", expect_eq = "$!write_val1", args = ["addr_idx=1"] },
-{ opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=1"] },
+    { opfunc = "Call_malloc", expect_eq = 0, args = [
+        "len=$alloc_size",
+        "mem_idx=1",
+    ] },
+    { opfunc = "Call_write32", expect_eq = 0, args = [
+        "addr_idx=1",
+        "val=$write_val1",
+    ] },
+    { opfunc = "Call_read32", expect_eq = "$write_val1", args = [
+        "addr_idx=1",
+    ] },
+    { opfunc = "Call_write32", expect_eq = 0, args = [
+        "addr_idx=1",
+        "val=$write_val2",
+    ] },
+    { opfunc = "Call_read32", expect_eq = "$!write_val1", args = [
+        "addr_idx=1",
+    ] },
+    { opfunc = "Call_free", expect_eq = 0, args = [
+        "mem_idx=1",
+    ] },
 ]
 inputs = [
-{ args = { alloc_size = "100", write_val1 = "0x888", write_val2 = "444" } },
-{ args = { alloc_size = "200", write_val1 = "0x999", write_val2 = "555" } },
-{ args = { alloc_size = "50", write_val1 = "0x555", write_val2 = "666" } }
+    { args = { alloc_size = "100", write_val1 = "0x888", write_val2 = "444" } },
+    { args = { alloc_size = "200", write_val1 = "0x999", write_val2 = "555" } },
+    { args = { alloc_size = "50", write_val1 = "0x555", write_val2 = "666" } },
 ]
 
 [[tests]]
 name = "Test_str_fill"
-thread_num=2
+thread_num = 2
 cmds = [
-{ opfunc = "Call_malloc", expect_eq = 0, args = ["len=100", "mem_idx=1"] },
-{ opfunc = "Call_strfill", expect_eq = 0, args = ["dst_addr=1", "content='abcdefg'", "len=7"] },
-{ opfunc = "Call_malloc", expect_eq = 0, args = ["mem_idx=2", "len=8"] },
-{ opfunc = "Call_memcpy", expect_eq = 0, args = ["src_idx=1", "dst_idx=2", "len=8"] },
-{ opfunc = "Call_strcmp", expect_eq = 0, args = ["str1=1", "str2=2"] },
-{ opfunc = "Call_mem_strlen", expect_eq = 7, args = ["str_idx=1"] },
-{ opfunc = "Call_mem_strlen", expect_eq = 7, args = ["str_idx=2"] },
-{ opfunc = "Call_strfill", expect_eq = 0, args = ["dst_addr=1", "content='casdaaasda'", "len=10"] },
-{ opfunc = "Call_mem_strlen", expect_eq = "$second_len", args = ["str_idx=1"] },
-{ opfunc = "Call_strcmp", expect_ne = 0, args = ["str1=1", "str2=2"] },
-{ opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=1"] },
-{ opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=2"] }
+    { opfunc = "Call_malloc", expect_eq = 0, args = [
+        "len=100",
+        "mem_idx=1",
+    ] },
+    { opfunc = "Call_strfill", expect_eq = 0, args = [
+        "dst_addr=1",
+        "content='abcdefg'",
+        "len=7",
+    ] },
+    { opfunc = "Call_malloc", expect_eq = 0, args = [
+        "mem_idx=2",
+        "len=8",
+    ] },
+    { opfunc = "Call_memcpy", expect_eq = 0, args = [
+        "src_idx=1",
+        "dst_idx=2",
+        "len=8",
+    ] },
+    { opfunc = "Call_strcmp", expect_eq = 0, args = [
+        "str1=1",
+        "str2=2",
+    ] },
+    { opfunc = "Call_mem_strlen", expect_eq = 7, args = [
+        "str_idx=1",
+    ] },
+    { opfunc = "Call_mem_strlen", expect_eq = 7, args = [
+        "str_idx=2",
+    ] },
+    { opfunc = "Call_strfill", expect_eq = 0, args = [
+        "dst_addr=1",
+        "content='casdaaasda'",
+        "len=10",
+    ] },
+    { opfunc = "Call_mem_strlen", expect_eq = "$second_len", args = [
+        "str_idx=1",
+    ] },
+    { opfunc = "Call_strcmp", expect_ne = 0, args = [
+        "str1=1",
+        "str2=2",
+    ] },
+    { opfunc = "Call_free", expect_eq = 0, args = [
+        "mem_idx=1",
+    ] },
+    { opfunc = "Call_free", expect_eq = 0, args = [
+        "mem_idx=2",
+    ] },
 ]
-inputs = [
-{ args = { second_len = "!7" } },
-{ args = { second_len = "10" } }
-]
+inputs = [{ args = { second_len = "!7" } }, { args = { second_len = "10" } }]
 "#
         .to_string();
 
@@ -106,48 +176,82 @@ inputs = [
         #[cfg(unix)]
         {
             test_case += r#"
-[[envs]]
-name = "memory_env"
-init = []
-exit = [{ opfunc = "Call_read32", expect_eq = 0, args=["mem_idx=40"] },] # read an not exist memory
-tests = []
-should_panic = true
+[[tests]]
+name = "test_dev_mem_page"
+thread_num = 1
+cmds = [
+    { opfunc = "Call_open", expect_eq = 0, args = [
+        "pathname='/dev/mem'",
+        "fd_idx=8",
+    ] },
+    { opfunc = "Call_mmap", expect_eq = "$map_res", args = [
+        "addr=0",
+        "len=$len",
+        "prot=3",
+        "flags=5",
+        "fd_idx=8",
+        "offset=0",
+        "addr_idx=11",
+    ] },
+    { opfunc = "Call_write64", expect_eq = 0, args = [
+        "addr_idx=11",
+        "val=$val",
+    ] },
+    { opfunc = "Call_read64", expect_eq = "$val", args = [
+        "addr_idx=11",
+    ] },
+    { opfunc = "Call_munmap", expect_eq = 0, args = [
+        "addr_idx=11",
+        "len=$len",
+    ] },
+    { opfunc = "Call_close", expect_eq = 0, args = [
+        "fd_idx=8",
+    ] },
+]
+inputs = [
+    { args = { len = "8192", prot = "7", flags = "5", val = "0x44564", map_res = "0" } },
+    { args = { len = "81920", prot = "3", flags = "4", val = "13214", map_res = "0" } },
+    { args = { len = "81920", prot = "2", flags = "1", val = "13214", map_res = "0" } },
+    { should_panic = false, args = { len = "8192", prot = "2", flags = "4", val = "44564", map_res = "0" } },
+]
 
 
 [[tests]]
 name = "test_dev_mem_page"
-thread_num=1
+thread_num = 1
 cmds = [
-{ opfunc = "Call_open", expect_eq = 0, args = ["pathname='/dev/mem'", "fd_idx=8"] },
-{ opfunc = "Call_mmap", expect_eq = "$map_res", args = ["addr=0", "len=$len", "prot=3", "flags=5", "fd_idx=8", "offset=0", "addr_idx=11"] },
-{ opfunc = "Call_write64", expect_eq = 0, args = ["addr_idx=11", "val=$val"] },
-{ opfunc = "Call_read64", expect_eq = "$val", args = ["addr_idx=11"] },
-{ opfunc = "Call_munmap", expect_eq = 0, args = ["addr_idx=11", "len=$len"] },
-{ opfunc = "Call_close", expect_eq = 0, args = ["fd_idx=8"] },
+    { opfunc = "Call_open", expect_eq = 0, args = [
+        "pathname='/dev/mem'",
+        "fd_idx=8",
+    ] },
+    { opfunc = "Call_mmap", expect_eq = 0, args = [
+        "addr=0",
+        "len=$len",
+        "prot=$prot",
+        "flags=$flags",
+        "fd_idx=8",
+        "offset=0",
+        "addr_idx=11",
+    ] },
+    { opfunc = "Call_write64", expect_eq = 0, args = [
+        "addr_idx=11",
+        "val=$val",
+    ] },
+    { opfunc = "Call_read64", expect_eq = "$val", args = [
+        "addr_idx=11",
+    ] },
+    { opfunc = "Call_munmap", expect_eq = 0, args = [
+        "addr_idx=11",
+        "len=$len",
+    ] },
+    { opfunc = "Call_close", expect_eq = 0, args = [
+        "fd_idx=8",
+    ] },
 ]
 inputs = [
-{ args = { len = "8192", prot = "7", flags = "5", val = "0x44564" , map_res = "0"} },
-{ args = { len = "81920", prot = "3", flags = "4", val = "13214", map_res = "0" } },
-{ args = { len = "81920", prot = "2", flags = "1", val = "13214" , map_res = "0"} },
-{ should_panic = false, args = { len = "8192", prot = "2", flags = "4", val = "44564" , map_res = "0"} },
-]
-
-
-[[tests]]
-name = "test_dev_mem_page"
-thread_num=1
-cmds = [
-{ opfunc = "Call_open", expect_eq = 0, args = ["pathname='/dev/mem'", "fd_idx=8"] },
-{ opfunc = "Call_mmap", expect_eq = 0, args = ["addr=0", "len=$len", "prot=$prot", "flags=$flags", "fd_idx=8", "offset=0", "addr_idx=11"] },
-{ opfunc = "Call_write64", expect_eq = 0, args = ["addr_idx=11", "val=$val"] },
-{ opfunc = "Call_read64", expect_eq = "$val", args = ["addr_idx=11"] },
-{ opfunc = "Call_munmap", expect_eq = 0, args = ["addr_idx=11", "len=$len"] },
-{ opfunc = "Call_close", expect_eq = 0, args = ["fd_idx=8"] },
-]
-inputs = [
-{ args = { len = "8192", prot = "7", flags = "5", val = "44564" } },
-{ args = { len = "81920", prot = "3", flags = "4", val = "13214" } },
-{ should_panic = true, args = { len = "8192", prot = "1", flags = "4", val = "44564" } },
+    { args = { len = "8192", prot = "7", flags = "5", val = "44564" } },
+    { args = { len = "81920", prot = "3", flags = "4", val = "13214" } },
+    { should_panic = true, args = { len = "8192", prot = "1", flags = "4", val = "44564" } },
 ]
 
     "#;

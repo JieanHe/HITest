@@ -52,33 +52,50 @@ impl Test {
             Ok(ForkResult::Child) => {
                 child_test.thread_num = 1;
                 child_test.should_panic = false;
-                let _res = child_test.run_one_thread();
-                exit(0);
+                let res = child_test.run_one_thread();
+                exit(if res { 0 } else { 1 });
             }
             Ok(ForkResult::Parent { child }) => {
-                let status = waitpid(child, None).expect("Waiting for child failed");
+                let timeout = std::time::Duration::from_secs(1);
+                let start = std::time::Instant::now();
 
-                match status {
-                    WaitStatus::Exited(_, code) => {
-                        error!("child process exit as code {}.", code);
-                        return false;
-                    }
-                    WaitStatus::Signaled(_, signal, _) => {
-                        info!("child process been terminate with signal {:#?}.", signal);
-                        return true;
-                    }
-                    _ => {
-                        error!(
-                            "child process unexpectedly exited with status: {:?}",
-                            status
-                        );
-                        return true;
+                loop {
+                    match waitpid(child, Some(nix::sys::wait::WaitPidFlag::WNOHANG)) {
+                        Ok(WaitStatus::StillAlive) => {
+                            if start.elapsed() > timeout {
+                                let _ = nix::sys::signal::kill(child, nix::sys::signal::SIGKILL);
+                                error!("Test case {} check panic failed! Child process timeout.", child_test.name);
+                                return false;
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(100));
+                            continue;
+                        }
+                        Ok(status) => {
+                            match status {
+                                    WaitStatus::Exited(_, code) => {
+                                        error!("Test case {} check panic failed! hild process exit as code {} .", child_test.name, code);
+                                        return false;
+                                    }
+                                    WaitStatus::Signaled(_, signal, _) => {
+                                        info!("Test case {} check panic successfully! child process been terminate with signal {:#?}.", child_test.name, signal);
+                                        return true;
+                                    }
+                                _ => {
+                                    error!("Unexpected child status: {:?}", status);
+                                    return false;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!("Waitpid error: {}", e);
+                            return false;
+                        }
                     }
                 }
             }
             Err(e) => {
-                error!("start child failed with error: {:?}", e);
-                return false;
+                error!("Fork failed: {}", e);
+                false
             }
         }
     }
