@@ -43,3 +43,9 @@ impl<'de> Deserialize<'de> for Condition {
         }
     }
 }
+
+impl Default for Condition {
+    fn default() -> Self {
+        Condition::Eq(String::new())
+    }
+}

@@ -15,7 +15,7 @@ fn default_input_name() -> String {
     format!("default{}", COUNTER.fetch_add(1, Ordering::Relaxed))
 }
 #[derive(Debug, Deserialize, Clone)]
-struct InputGroup {
+pub struct InputGroup {
     #[serde(default = "default_input_name")]
     name: String,
     args: HashMap<String, String>,
@@ -31,18 +31,18 @@ fn default_one() -> i64 {
     1
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Default)]
 pub struct Test {
     pub name: String,
-    cmds: Vec<Cmd>,
+    pub cmds: Vec<Cmd>,
     #[serde(default = "default_one")]
-    thread_num: i64,
+    pub thread_num: i64,
     #[serde(default)]
-    should_panic: bool,
+    pub should_panic: bool,
     #[serde(default = "default_true")]
-    break_if_fail: bool,
+    pub break_if_fail: bool,
     #[serde(default)]
-    inputs: Vec<InputGroup>,
+    pub inputs: Vec<InputGroup>,
 }
 
 impl Test {
@@ -99,7 +99,7 @@ impl Test {
             }
         }
     }
-
+    #[cfg(unix)]
     pub fn will_panic(&mut self) {
         self.should_panic = true;
     }

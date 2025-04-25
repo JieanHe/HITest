@@ -5,7 +5,7 @@ use serde::Deserialize;
 use std::error::Error;
 use std::fmt;
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Default)]
 pub struct Cmd {
     pub opfunc: String,
     #[serde(flatten)]
