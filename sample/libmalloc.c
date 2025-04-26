@@ -53,35 +53,40 @@ EXPORT_FUNC(memset, dst_idx, val, len)
     return 0;
 }
 
-EXPORT_FUNC(memcmp, dst_idx, src_idx, len)
+EXPORT_FUNC(memcmp, dst_idx, src_off, src_idx, dst_off, len)
 {
-    CHECK_PARAM_LEN(3);
+    CHECK_PARAM_LEN(5);
     GET_INPUT_IDX_NZ(void *, dst_idx, 0);
-    GET_INPUT_IDX_NZ(void *, src_idx, 1);
-    GET_VALUE(size_t, len, 2);
+    GET_VALUE(size_t, dst_off, 1);
+    GET_INPUT_IDX_NZ(void *, src_idx, 2);
+    GET_VALUE(size_t, src_off, 3 );
 
-    return memcmp(dst_idx, src_idx, len);
+    GET_VALUE(size_t, len, 4);
+
+    return memcmp(dst_idx + dst_off, src_idx + src_off, len);
 }
 //==========================================================
 // data access
 //==========================================================
 
-EXPORT_FUNC(read32, addr_idx)
-{
-    CHECK_PARAM_LEN(1);
-    GET_INPUT_IDX_NZ(uint32_t *, addr_idx, 0);
-
-    return *addr_idx;
-}
-
-EXPORT_FUNC(write32, addr_idx, val)
+EXPORT_FUNC(read32, addr_idx, off)
 {
     CHECK_PARAM_LEN(2);
+    GET_INPUT_IDX_NZ(uint64_t, addr_idx, 0);
+    GET_VALUE(size_t, off, 1);
 
-    GET_INPUT_IDX_NZ(uint32_t *, addr_idx, 0);
-    GET_VALUE(uint32_t, val, 1);
+    return *(uint32_t *)(addr_idx + off);
+}
 
-    *addr_idx = val;
+EXPORT_FUNC(write32, addr_idx, off, val)
+{
+    CHECK_PARAM_LEN(3);
+
+    GET_INPUT_IDX_NZ(uint64_t, addr_idx, 0);
+    GET_VALUE(size_t, off, 1);
+    GET_VALUE(uint32_t, val, 2);
+    printf("write32: addr_idx: %lx, off: %lx, val: %lx\n", addr_idx, off, val);
+    *(uint32_t *)(addr_idx + off) = val;
     return 0;
 }
 
@@ -147,22 +152,25 @@ EXPORT_FUNC(strfill, dst_addr, content, len)
     return 0;
 }
 
-EXPORT_FUNC(read64, addr_idx)
-{
-    CHECK_PARAM_LEN(1);
-    GET_INPUT_IDX_NZ(uint64_t *, addr_idx, 0);
-
-    return *addr_idx;
-}
-
-EXPORT_FUNC(write64, addr_idx, val)
+EXPORT_FUNC(read64, addr_idx, off)
 {
     CHECK_PARAM_LEN(2);
+    GET_INPUT_IDX_NZ(uint64_t, addr_idx, 0);
+    GET_VALUE(size_t, off, 1);
 
-    GET_INPUT_IDX_NZ(uint64_t *, addr_idx, 0);
-    GET_VALUE(uint64_t, val, 1);
+    addr_idx += off;
+    return *(uint64_t*)addr_idx;
+}
 
-    *addr_idx = val;
+EXPORT_FUNC(write64, addr_idx, off, val)
+{
+    CHECK_PARAM_LEN(3);
+
+    GET_INPUT_IDX_NZ(uint64_t, addr_idx, 0);
+    GET_VALUE(size_t, off, 1);
+    GET_VALUE(uint64_t, val, 2);
+    addr_idx += off;
+    *(uint64_t *)addr_idx = val;
     return 0;
 }
 

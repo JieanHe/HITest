@@ -71,9 +71,11 @@ cmds = [
     { opfunc = "Call_write32", expect_eq = 0, args = [
         "addr_idx=1",
         "val=$write_val",
+        "off=0",
     ] },
     { opfunc = "Call_read32", expect_eq = "$write_val", args = [
         "addr_idx=1",
+        "off=0",
     ] },
     { opfunc = "Call_free", expect_eq = 0, args = [
         "mem_idx=1",
@@ -96,16 +98,20 @@ cmds = [
     { opfunc = "Call_write32", expect_eq = 0, args = [
         "addr_idx=1",
         "val=$write_val1",
+        "off=0",
     ] },
     { opfunc = "Call_read32", expect_eq = "$write_val1", args = [
         "addr_idx=1",
+        "off=0",
     ] },
     { opfunc = "Call_write32", expect_eq = 0, args = [
         "addr_idx=1",
         "val=$write_val2",
+        "off=0",
     ] },
     { opfunc = "Call_read32", expect_eq = "$!write_val1", args = [
         "addr_idx=1",
+        "off=0",
     ] },
     { opfunc = "Call_free", expect_eq = 0, args = [
         "mem_idx=1",
@@ -196,9 +202,11 @@ cmds = [
     { opfunc = "Call_write64", expect_eq = 0, args = [
         "addr_idx=11",
         "val=$val",
+        "off=0",
     ] },
     { opfunc = "Call_read64", expect_eq = "$val", args = [
         "addr_idx=11",
+        "off=0",
     ] },
     { opfunc = "Call_munmap", expect_eq = 0, args = [
         "addr_idx=11",
@@ -236,9 +244,11 @@ cmds = [
     { opfunc = "Call_write64", expect_eq = 0, args = [
         "addr_idx=11",
         "val=$val",
+        "off=0",
     ] },
     { opfunc = "Call_read64", expect_eq = "$val", args = [
         "addr_idx=11",
+        "off=0",
     ] },
     { opfunc = "Call_munmap", expect_eq = 0, args = [
         "addr_idx=11",
