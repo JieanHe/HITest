@@ -1,4 +1,4 @@
-use super::{Cmd, Condition};
+use super::{Cmd, Condition, InputGroup};
 use log::{error, debug, info};
 #[cfg(unix)]
 use nix::{sys::wait::waitpid, sys::wait::WaitStatus, unistd::fork, unistd::ForkResult};
@@ -8,20 +8,6 @@ use std::collections::HashMap;
 #[cfg(unix)]
 use std::process::exit;
 use std::fmt;
-
-fn default_input_name() -> String {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    static COUNTER: AtomicUsize = AtomicUsize::new(1);
-    format!("default{}", COUNTER.fetch_add(1, Ordering::Relaxed))
-}
-#[derive(Debug, Deserialize, Clone)]
-pub struct InputGroup {
-    #[serde(default = "default_input_name")]
-    name: String,
-    args: HashMap<String, String>,
-    should_panic: Option<bool>,
-    break_if_fail: Option<bool>,
-}
 
 fn default_true() -> bool {
     true
