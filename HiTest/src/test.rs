@@ -87,10 +87,6 @@ impl Test {
             }
         }
     }
-    #[cfg(unix)]
-    pub fn will_panic(&mut self) {
-        self.should_panic = true;
-    }
 
     fn run_one_thread(&self) -> bool {
         let mut all_success = true;
