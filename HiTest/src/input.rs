@@ -7,7 +7,7 @@ fn default_input_name() -> String {
     format!("default{}", COUNTER.fetch_add(1, Ordering::Relaxed))
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Default)]
 pub struct InputGroup {
     #[serde(default = "default_input_name")]
     pub name: String,

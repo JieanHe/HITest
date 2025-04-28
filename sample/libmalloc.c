@@ -85,7 +85,7 @@ EXPORT_FUNC(write32, addr_idx, off, val)
     GET_INPUT_IDX_NZ(uint64_t, addr_idx, 0);
     GET_VALUE(size_t, off, 1);
     GET_VALUE(uint32_t, val, 2);
-    printf("write32: addr_idx: %lx, off: %lx, val: %lx\n", addr_idx, off, val);
+
     *(uint32_t *)(addr_idx + off) = val;
     return 0;
 }

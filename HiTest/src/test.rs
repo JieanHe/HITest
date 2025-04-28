@@ -29,6 +29,8 @@ pub struct Test {
     pub break_if_fail: bool,
     #[serde(default)]
     pub inputs: Vec<InputGroup>,
+    #[serde(default)]
+    pub ref_names: Vec<String>,
 }
 
 impl Test {
@@ -221,6 +223,22 @@ impl Test {
     pub fn push_front(&mut self, cmd: Cmd) {
         self.cmds.insert(0, cmd);
     }
+
+    pub fn merge_shared_inputs(&mut self, shared_inputs: &HashMap<String, Vec<InputGroup>>) {
+        let mut merged = Vec::new();
+
+        for ref_name in &self.ref_names {
+            if let Some(groups) = shared_inputs.get(ref_name) {
+                merged.extend(groups.clone());
+            } else {
+                error!("Shared input group {} not found!", ref_name);
+            }
+        }
+
+        merged.extend(self.inputs.drain(..));
+        debug!("Merging {} local input groups, total {} group now", self.inputs.len(), merged.len());
+        self.inputs = merged;
+    }
 }
 
 impl fmt::Display for Test {
@@ -308,6 +326,7 @@ mod test {
                     break_if_fail: None,
                 },
             ],
+            ref_names: vec![],
         };
         let processed = test.process_input_group();
         assert_eq!(processed.len(), 2);
@@ -315,5 +334,78 @@ mod test {
         assert_eq!(processed[1].name, "input_test_test_input1");
     }
 
+    #[test]
+    fn test_shared_inputs_merge() {
+        let mut shared_inputs = HashMap::new();
+        shared_inputs.insert(
+            "common".to_string(),
+            vec![
+                InputGroup {
+                    name: "shared1".to_string(),
+                    args: [("val".to_string(), "100".to_string())].into(),
+                    ..Default::default()
+                }
+            ],
+        );
 
+        let test = Test {
+            name: "test1".to_string(),
+            ref_names: vec!["common".to_string()],
+            inputs: vec![
+                InputGroup {
+                    name: "local1".to_string(),
+                    args: [("val2".to_string(), "200".to_string())].into(),
+                    ..Default::default()
+                }
+            ],
+            ..Default::default()
+        };
+
+        let mut test = test.clone();
+        test.merge_shared_inputs(&shared_inputs);
+        let processed = test.process_input_group();
+
+        assert_eq!(processed.len(), 2);
+        assert_eq!(processed[0].name, "test1_shared1");
+        assert_eq!(processed[1].name, "test1_local1");
+    }
+
+    #[test]
+    fn test_multiple_shared_inputs() {
+        let mut shared_inputs = HashMap::new();
+        shared_inputs.insert(
+            "group1".to_string(),
+            vec![
+                InputGroup {
+                    name: "g1_input1".to_string(),
+                    args: [("size".to_string(), "100".to_string())].into(),
+                    ..Default::default()
+                }
+            ],
+        );
+        shared_inputs.insert(
+            "group2".to_string(),
+            vec![
+                InputGroup {
+                    name: "g2_input1".to_string(),
+                    args: [("count".to_string(), "50".to_string())].into(),
+                    ..Default::default()
+                }
+            ],
+        );
+
+        let test = Test {
+            name: "multi_test".to_string(),
+            ref_names: vec!["group1".to_string(), "group2".to_string()],
+            ..Default::default()
+        };
+
+        let mut test = test.clone();
+        test.merge_shared_inputs(&shared_inputs);
+        let processed = test.process_input_group();
+
+        assert_eq!(processed.len(), 2);
+        assert!(processed.iter().any(|t| t.name == "multi_test_g1_input1"));
+        assert!(processed.iter().any(|t| t.name == "multi_test_g2_input1"));
+    }
 }

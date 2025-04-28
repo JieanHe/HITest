@@ -39,98 +39,78 @@ pub fn prepare_sample_files() -> (String, String) {
         let mut test_case: String = r#"concurrences = [{ tests = ["test_rw_u32", "Test_str_fill"], name = "group1" }]
 
 [[envs]]
-name = "memory_panic_env"
+name = "memory_prepare"
 init = [
     { opfunc = "Call_malloc", expect_eq = 0, args = [
-        "len=10000",
-        "mem_idx=48",
+        "len=0x1000",
+        "mem_idx=0",
     ] },
     { opfunc = "Call_malloc", expect_eq = 0, args = [
-        "len=10000",
-        "mem_idx=49",
+        "len=0x1000",
+        "mem_idx=1",
     ] },
 ]
 exit = [
     { opfunc = "Call_free", expect_eq = 0, args = [
-        "mem_idx=48",
+        "mem_idx=1",
     ] },
     { opfunc = "Call_free", expect_eq = 0, args = [
-        "mem_idx=49",
+        "mem_idx=0",
     ] },
 ]
-tests = []
+tests = ["test_rw_u32", "test_rw_u64", "Test_str_fill"]
+
+[shared_inputs]
+common1 = [
+    { name = "ipt1", args = {  write_val = "888", off = "0x0" } },
+    { name = "ipt2", args = {  write_val = "999", off = "0x10" } },
+]
+common2 = [
+    { name = "ipt3", args = {  write_val = "555", off = "0x100" } }
+]
+rw_common = [
+    { name = "ipt4", args = { write_val1 = "888", write_val2 = "999" } }
+]
 
 [[tests]]
 name = "test_rw_u32"
 thread_num = 2
 cmds = [
-    { opfunc = "Call_malloc", expect_eq = 0, args = [
-        "len=$alloc_size",
-        "mem_idx=1",
-    ] },
     { opfunc = "Call_write32", expect_eq = 0, args = [
-        "addr_idx=1",
+        "addr_idx=0",
         "val=$write_val",
-        "off=0",
+        "off=$off",
     ] },
     { opfunc = "Call_read32", expect_eq = "$write_val", args = [
-        "addr_idx=1",
-        "off=0",
+        "addr_idx=0",
+        "off=$off",
     ] },
-    { opfunc = "Call_free", expect_eq = 0, args = [
-        "mem_idx=1",
-    ] },
+
 ]
-inputs = [
-    { name = "ipt1", args = { alloc_size = "100", write_val = "888" } },
-    { name = "ipt2", args = { alloc_size = "200", write_val = "999" } },
-    { args = { alloc_size = "50", write_val = "555" } },
-]
+inputs = [ { name = "ipt4", args = { alloc_size = "0x1000", write_val = "888", off = "0xffc" } }]
+ref_names = ["common1", "common2"]
 
 [[tests]]
-name = "test_rw_u32_ne"
+name = "test_rw_u64"
 thread_num = 2
 cmds = [
-    { opfunc = "Call_malloc", expect_eq = 0, args = [
-        "len=$alloc_size",
-        "mem_idx=1",
+    { opfunc = "Call_write64", expect_eq = 0, args = [
+        "addr_idx=0",
+        "val=$write_val",
+        "off=$off",
     ] },
-    { opfunc = "Call_write32", expect_eq = 0, args = [
-        "addr_idx=1",
-        "val=$write_val1",
-        "off=0",
-    ] },
-    { opfunc = "Call_read32", expect_eq = "$write_val1", args = [
-        "addr_idx=1",
-        "off=0",
-    ] },
-    { opfunc = "Call_write32", expect_eq = 0, args = [
-        "addr_idx=1",
-        "val=$write_val2",
-        "off=0",
-    ] },
-    { opfunc = "Call_read32", expect_eq = "$!write_val1", args = [
-        "addr_idx=1",
-        "off=0",
-    ] },
-    { opfunc = "Call_free", expect_eq = 0, args = [
-        "mem_idx=1",
+    { opfunc = "Call_read64", expect_eq = "$write_val", args = [
+        "addr_idx=0",
+        "off=$off",
     ] },
 ]
-inputs = [
-    { args = { alloc_size = "100", write_val1 = "0x888", write_val2 = "444" } },
-    { args = { alloc_size = "200", write_val1 = "0x999", write_val2 = "555" } },
-    { args = { alloc_size = "50", write_val1 = "0x555", write_val2 = "666" } },
-]
+inputs = [ { name = "ipt4", should_panic = false, args = { write_val = "888", off = "0x400" } }]
+ref_names = ["common1"]
 
 [[tests]]
 name = "Test_str_fill"
 thread_num = 2
 cmds = [
-    { opfunc = "Call_malloc", expect_eq = 0, args = [
-        "len=100",
-        "mem_idx=1",
-    ] },
     { opfunc = "Call_strfill", expect_eq = 0, args = [
         "dst_addr=1",
         "content='abcdefg'",
@@ -167,14 +147,9 @@ cmds = [
         "str1=1",
         "str2=2",
     ] },
-    { opfunc = "Call_free", expect_eq = 0, args = [
-        "mem_idx=1",
-    ] },
-    { opfunc = "Call_free", expect_eq = 0, args = [
-        "mem_idx=2",
-    ] },
 ]
 inputs = [{ args = { second_len = "!7" } }, { args = { second_len = "10" } }]
+
 "#
         .to_string();
 

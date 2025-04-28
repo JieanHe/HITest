@@ -20,11 +20,11 @@ impl ConcurrencyGroup {
         }
 
         let mut test_cases: Vec<Test> = Vec::new();
-        for test in tests {
-            if self.tests.contains(&test.name) {
-                let mut test = test.clone();
-                test.name = format!("{}_{}", self.name, test.name);
-                test_cases.push(test);
+        for original_test in tests {
+            if self.tests.contains(&original_test.name) {
+                let mut cloned_test = original_test.clone();
+                cloned_test.name = format!("{}_{}", self.name, original_test.name);
+                test_cases.push(cloned_test);
             }
         }
 

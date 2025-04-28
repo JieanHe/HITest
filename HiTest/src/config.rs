@@ -1,8 +1,9 @@
-use super::{Cmd, ConcurrencyGroup, Test};
+use super::{Cmd, ConcurrencyGroup, InputGroup, Test};
 use log::{debug, info};
 use serde::Deserialize;
 use std::io::Write;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
+use std::collections::HashMap;
 
 #[derive(Debug, Deserialize, Clone)]
 struct Env {
@@ -18,6 +19,8 @@ pub struct Config {
     concurrences: Option<Vec<ConcurrencyGroup>>,
     #[serde(default)]
     envs: Vec<Env>,
+    #[serde(default)]
+    shared_inputs: HashMap<String, Vec<InputGroup>>,
     tests: Vec<Test>,
 }
 
@@ -92,7 +95,15 @@ impl Config {
         let mut success_tests = 0;
         let mut failed_tests = 0;
 
+        // apply envs
         let tests = self.apply_envs();
+        // merge shared inputs
+        let shared_inputs = self.shared_inputs.clone();
+        let tests = tests.into_iter().map(|mut test| {
+            test.merge_shared_inputs(&shared_inputs);
+            test
+        }).collect::<Vec<_>>();
+
         // run concurrency group
         let mut concurrency_tests: Vec<String> = Vec::new();
         if let Some(concurrences) = self.concurrences {
@@ -154,6 +165,7 @@ mod tests {
             ],
             tests: vec![],
             concurrences: None,
+            shared_inputs: HashMap::new(),
         };
         assert!(config.validate().is_err());
     }
@@ -167,6 +179,7 @@ mod tests {
             ],
             tests: vec![Test { name: "test1".into(), ..Default::default() }],
             concurrences: None,
+            shared_inputs: HashMap::new(),
         };
         assert!(config.validate().is_err());
     }
@@ -194,15 +207,16 @@ mod tests {
             ],
             tests: vec![Test { name: "test1".into(), ..Default::default() }],
             concurrences: None,
+            shared_inputs: HashMap::new(),
         };
 
         let tests = config.apply_envs();
 
         let test = &tests[0];
-        // 检查local env的cmd在最前面
+
         assert_eq!(test.cmds[0].opfunc, "global_init");
         assert_eq!(test.cmds[1].opfunc, "local_init");
-        // 检查global env的exit cmd在最后面
+
         assert_eq!(test.cmds[test.cmds.len() - 2].opfunc, "local_exit");
         assert_eq!(test.cmds[test.cmds.len() - 1].opfunc, "global_exit");
     }
