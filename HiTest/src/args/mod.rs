@@ -36,8 +36,13 @@ fn parse_command_line(matches: &ArgMatches) -> RunArgs {
     }
 
     let mut log_lvl: &str = matches.value_of("log").unwrap_or("info");
-    let valid_lvl = ["info", "error", "debug"];
-    if !valid_lvl.contains(&log_lvl) {
+    if (log_lvl == "1") || (log_lvl == "error") {
+        log_lvl = "error";
+    } else if (log_lvl == "2") || (log_lvl == "warn") {
+        log_lvl = "warn";
+    } else if (log_lvl == "4") || (log_lvl == "debug") {
+        log_lvl = "debug";
+    } else {
         log_lvl = "info";
     }
     RunArgs {
@@ -66,16 +71,17 @@ fn init_command_line() -> ArgMatches {
     .arg(
         Arg::with_name("log")
             .long("log")
+            .short('l')
             .value_name("log level")
-            .help("to control the log level, valid value contains [info, debug, error]. Invalid value will be set to 'info' as default ")
+            .help("to control the log level, valid value contains [1,2,3,4]. which means [debug, info, warn, error]. default is info")
             .takes_value(true)
             .required(false),
     )
     .arg(
-        Arg::with_name("libs")
-            .short('l')
-            .long("libs")
-            .value_name("libs config file")
+        Arg::with_name("input libs")
+            .short('i')
+            .long("input")
+            .value_name("input libs config file")
             .help("a toml file contains all dependency libs")
             .takes_value(true)
             .required(false),
