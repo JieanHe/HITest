@@ -36,6 +36,7 @@ pub struct Test {
 impl Test {
     #[cfg(unix)]
     fn check_panic(mut child_test: Self) -> bool {
+        info!("start executing test case {} with panic check.", child_test.name);
         match unsafe { fork() } {
             Ok(ForkResult::Child) => {
                 child_test.thread_num = 1;
@@ -65,7 +66,7 @@ impl Test {
                                         return false;
                                     }
                                     WaitStatus::Signaled(_, signal, _) => {
-                                        info!("Test case {} check panic successfully! child process been terminate with signal {:#?}.", child_test.name, signal);
+                                        info!("Test case {} check panic successfully! crashed with signal {:#?}.", child_test.name, signal);
                                         return true;
                                     }
                                 _ => {
@@ -89,6 +90,7 @@ impl Test {
     }
 
     fn run_one_thread(&self) -> bool {
+        info!("start executing test case {}.", self.name);
         let mut all_success = true;
         for cmd in self.cmds.clone() {
             match cmd.run() {
@@ -96,11 +98,11 @@ impl Test {
                     if !v {
                         all_success = false;
                         if self.break_if_fail {
-                            error!(
-                                "Test case {} stopped because cmd {} failed!\n",
+                            debug!(
+                                "Test case {} stopped because cmd {} failed!",
                                 self.name, &cmd.opfunc
                             );
-                            return false;
+                            break;
                         }
                     }
                 }
@@ -111,9 +113,9 @@ impl Test {
             }
         }
         if all_success {
-            info!("Test case {} execute successfully!", self.name);
+            info!("Test case {} execute successfully!\n", self.name);
         } else {
-            error!("Test case {} execute failed!", self.name);
+            error!("Test case {} execute failed!\n", self.name);
         }
 
         all_success

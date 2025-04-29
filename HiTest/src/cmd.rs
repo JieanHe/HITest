@@ -87,9 +87,9 @@ impl Cmd {
         );
 
         if !is_success {
-            error!("{}", message);
+            error!("{} validate failed", message);
         } else {
-            debug!("{} succeeded", message);
+            debug!("{} validate succeeded", message);
         }
 
         Ok(is_success)
