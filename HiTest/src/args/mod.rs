@@ -26,12 +26,12 @@ fn parse_command_line(matches: &ArgMatches) -> RunArgs {
         (libs_path, test_path) = prepare_sample_files();
     } else {
         libs_path = matches
-            .value_of("libs")
-            .expect("failed to get lib path")
+            .value_of("inputs")
+            .expect("failed to get library config path")
             .to_string();
         test_path = matches
             .value_of("cases")
-            .expect("failed to get lib path")
+            .expect("failed to get test cases config path")
             .to_string();
     }
 
@@ -78,7 +78,7 @@ fn init_command_line() -> ArgMatches {
             .required(false),
     )
     .arg(
-        Arg::with_name("input libs")
+        Arg::with_name("inputs")
             .short('i')
             .long("input")
             .value_name("input libs config file")
