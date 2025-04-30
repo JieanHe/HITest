@@ -1,13 +1,13 @@
-use super::{Cmd, Condition, InputGroup};
-use log::{error, debug, info};
+use super::{ArgValue, Cmd, Condition, InputGroup};
+use log::{debug, error, info};
 #[cfg(unix)]
 use nix::{sys::wait::waitpid, sys::wait::WaitStatus, unistd::fork, unistd::ForkResult};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::fmt;
 #[cfg(unix)]
 use std::process::exit;
-use std::fmt;
 
 fn default_true() -> bool {
     true
@@ -36,7 +36,10 @@ pub struct Test {
 impl Test {
     #[cfg(unix)]
     fn check_panic(mut child_test: Self) -> bool {
-        info!("start executing test case {} with panic check.", child_test.name);
+        info!(
+            "start executing test case {} with panic check.",
+            child_test.name
+        );
         match unsafe { fork() } {
             Ok(ForkResult::Child) => {
                 child_test.thread_num = 1;
@@ -53,28 +56,29 @@ impl Test {
                         Ok(WaitStatus::StillAlive) => {
                             if start.elapsed() > timeout {
                                 let _ = nix::sys::signal::kill(child, nix::sys::signal::SIGKILL);
-                                error!("Test case {} check panic failed! Child process timeout.", child_test.name);
+                                error!(
+                                    "Test case {} check panic failed! Child process timeout.",
+                                    child_test.name
+                                );
                                 return false;
                             }
                             std::thread::sleep(std::time::Duration::from_millis(100));
                             continue;
                         }
-                        Ok(status) => {
-                            match status {
-                                    WaitStatus::Exited(_, code) => {
-                                        error!("Test case {} check panic failed! hild process exit as code {} .", child_test.name, code);
-                                        return false;
-                                    }
-                                    WaitStatus::Signaled(_, signal, _) => {
-                                        info!("Test case {} check panic successfully! crashed with signal {:#?}.", child_test.name, signal);
-                                        return true;
-                                    }
-                                _ => {
-                                    error!("Unexpected child status: {:?}", status);
-                                    return false;
-                                }
+                        Ok(status) => match status {
+                            WaitStatus::Exited(_, code) => {
+                                error!("Test case {} check panic failed! hild process exit as code {} .", child_test.name, code);
+                                return false;
                             }
-                        }
+                            WaitStatus::Signaled(_, signal, _) => {
+                                info!("Test case {} check panic successfully! crashed with signal {:#?}.", child_test.name, signal);
+                                return true;
+                            }
+                            _ => {
+                                error!("Unexpected child status: {:?}", status);
+                                return false;
+                            }
+                        },
                         Err(e) => {
                             error!("Waitpid error: {}", e);
                             return false;
@@ -122,58 +126,125 @@ impl Test {
     }
 
     fn process_input_group(&self) -> Vec<Test> {
-        let tests = if self.inputs.is_empty() {
-            vec![self.clone()]
-        } else {
-            self.inputs
-                .iter()
-                .map(|input| {
-                    let mut test = self.clone();
-                    test.inputs = vec![];
-                    test.break_if_fail = input.break_if_fail.unwrap_or(self.break_if_fail);
-                    test.should_panic = input.should_panic.unwrap_or(self.should_panic);
-                    test.name = format!("{}_{}", self.name, input.name);
-                    test.cmds = test
-                        .cmds
-                        .iter()
-                        .map(|cmd| {
-                            let resolved_args = cmd
-                                .args
-                                .iter()
-                                .map(|arg| replace_vars(arg.clone(), &input.args))
-                                .collect();
+        if self.inputs.is_empty() {
+            return vec![self.clone()];
+        }
 
-                            let condition = match &cmd.condition {
-                                Condition::Eq(s) => {
-                                    let replaced = replace_vars(s.clone(), &input.args);
-                                    if replaced.starts_with("!") {
-                                        Condition::Ne(replaced[1..].to_string())
-                                    } else {
-                                        Condition::Eq(replaced)
-                                    }
-                                }
-                                Condition::Ne(s) => {
-                                    Condition::Ne(replace_vars(s.clone(), &input.args))
-                                }
-                            };
-                            Cmd {
-                                opfunc: cmd.opfunc.clone(),
-                                condition,
-                                args: resolved_args,
-                                perf: cmd.perf,
-                            }
-                        })
-                        .collect();
+        let mut expanded_inputs = Vec::new();
+        for input in &self.inputs {
+            let mut expanded = Self::expand_input_args(input);
 
-                    test
+            expanded = expanded
+                .into_iter()
+                .flat_map(|input| {
+                    let mut groups = vec![input];
+                    while groups.iter().any(|g| {
+                        g.args
+                            .values()
+                            .any(|v| matches!(v, ArgValue::List(_) | ArgValue::Range(_)))
+                    }) {
+                        groups = groups
+                            .into_iter()
+                            .flat_map(|g| Self::expand_input_args(&g))
+                            .collect();
+                    }
+                    groups
                 })
-                .collect()
-        };
-        tests
+                .collect();
+
+            expanded_inputs.extend(expanded);
+        }
+
+        expanded_inputs
+            .into_iter()
+            .map(|input| {
+                let mut test = self.clone();
+                test.inputs = vec![];
+                test.break_if_fail = input.break_if_fail.unwrap_or(self.break_if_fail);
+                test.should_panic = input.should_panic.unwrap_or(self.should_panic);
+                test.name = format!("{}_{}", self.name, input.name);
+
+                test.cmds = test
+                    .cmds
+                    .iter()
+                    .map(|cmd| {
+                        let resolved_args = cmd
+                            .args
+                            .iter()
+                            .map(|arg| replace_vars(arg.clone(), &input.args))
+                            .collect();
+
+                        let condition = match &cmd.condition {
+                            Condition::Eq(s) => {
+                                let replaced = replace_vars(s.clone(), &input.args);
+                                if replaced.starts_with("!") {
+                                    Condition::Ne(replaced[1..].to_string())
+                                } else {
+                                    Condition::Eq(replaced)
+                                }
+                            }
+                            Condition::Ne(s) => Condition::Ne(replace_vars(s.clone(), &input.args)),
+                        };
+
+                        Cmd {
+                            opfunc: cmd.opfunc.clone(),
+                            condition,
+                            args: resolved_args,
+                            perf: cmd.perf,
+                        }
+                    })
+                    .collect();
+
+                test
+            })
+            .collect()
+    }
+
+    fn expand_input_args(input: &InputGroup) -> Vec<InputGroup> {
+        let mut expanded = Vec::new();
+        let current = input.clone();
+
+        for (key, value) in &input.args {
+            match value {
+                ArgValue::Single(_) => continue,
+                ArgValue::List(items) => {
+                    for (i, item) in items.iter().enumerate() {
+                        let mut new_input = current.clone();
+                        new_input
+                            .args
+                            .insert(key.clone(), ArgValue::Single(item.clone()));
+                        new_input.name = format!("{}_{}", input.name, i);
+                        expanded.push(new_input);
+                    }
+                    return expanded;
+                }
+                ArgValue::Range(range) => {
+                    let step = range.step.unwrap_or(1);
+                    let mut values = Vec::new();
+                    let mut i = range.start;
+                    while i <= range.end {
+                        values.push(i.to_string());
+                        i += step;
+                    }
+
+                    for (i, val) in values.iter().enumerate() {
+                        let mut new_input = current.clone();
+                        new_input
+                            .args
+                            .insert(key.clone(), ArgValue::Single(val.clone()));
+                        new_input.name = format!("{}_{}", input.name, i);
+                        expanded.push(new_input);
+                    }
+                    return expanded;
+                }
+            }
+        }
+
+        vec![current]
     }
 
     pub fn run(&self) -> (usize, usize) {
-        debug!("start executing test case {}.",  self);
+        debug!("start executing test case {}.", self);
         let tests = self.process_input_group();
         let tests: Vec<_> = tests
             .into_iter()
@@ -234,7 +305,11 @@ impl Test {
         }
 
         merged.extend(self.inputs.drain(..));
-        debug!("Merging {} local input groups, total {} group now", self.inputs.len(), merged.len());
+        debug!(
+            "Merging {} local input groups, total {} group now",
+            self.inputs.len(),
+            merged.len()
+        );
         self.inputs = merged;
     }
 }
@@ -262,11 +337,16 @@ impl fmt::Display for Test {
     }
 }
 
-fn replace_vars(s: String, vars: &HashMap<String, String>) -> String {
+fn replace_vars(s: String, vars: &HashMap<String, ArgValue>) -> String {
     let mut result = s;
     for (k, v) in vars {
-        result = result.replace(&format!("${}", k), v);
-        result = result.replace(&format!("$!{}", k), &format!("!{}", v));
+        let value = match v {
+            ArgValue::Single(s) => s.clone(),
+            ArgValue::List(_) => panic!("List values should be expanded before replace_vars"),
+            ArgValue::Range(_) => panic!("Range values should be expanded before replace_vars"),
+        };
+        result = result.replace(&format!("${}", k), &value);
+        result = result.replace(&format!("$!{}", k), &format!("!{}", value));
     }
     result
 }
@@ -274,11 +354,12 @@ fn replace_vars(s: String, vars: &HashMap<String, String>) -> String {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::{ArgValue, RangeExpr};
 
     #[test]
     fn test_replace_vars() {
         let mut vars = HashMap::new();
-        vars.insert("size".into(), "100".into());
+        vars.insert("size".into(), ArgValue::Single("100".into()));
         let result = replace_vars("len=$size".into(), &vars);
         assert_eq!(result, "len=100");
     }
@@ -286,7 +367,7 @@ mod test {
     #[test]
     fn test_replace_negated_vars() {
         let mut vars = HashMap::new();
-        vars.insert("val".into(), "123".into());
+        vars.insert("val".into(), ArgValue::Single("123".into()));
         let result = replace_vars("expect=$!val".into(), &vars);
         assert_eq!(result, "expect=!123");
     }
@@ -307,7 +388,7 @@ mod test {
             inputs: vec![
                 InputGroup {
                     name: "test_input0".to_string(),
-                    args: [("val".to_string(), "123".to_string())]
+                    args: [("val".to_string(), ArgValue::Single("123".to_string()))]
                         .iter()
                         .cloned()
                         .collect(),
@@ -316,7 +397,7 @@ mod test {
                 },
                 InputGroup {
                     name: "test_input1".to_string(),
-                    args: [("val".to_string(), "456".to_string())]
+                    args: [("val".to_string(), ArgValue::Single("456".to_string()))]
                         .iter()
                         .cloned()
                         .collect(),
@@ -337,25 +418,21 @@ mod test {
         let mut shared_inputs = HashMap::new();
         shared_inputs.insert(
             "common".to_string(),
-            vec![
-                InputGroup {
-                    name: "shared1".to_string(),
-                    args: [("val".to_string(), "100".to_string())].into(),
-                    ..Default::default()
-                }
-            ],
+            vec![InputGroup {
+                name: "shared1".to_string(),
+                args: [("val".to_string(), ArgValue::Single("100".to_string()))].into(),
+                ..Default::default()
+            }],
         );
 
         let test = Test {
             name: "test1".to_string(),
             ref_names: vec!["common".to_string()],
-            inputs: vec![
-                InputGroup {
-                    name: "local1".to_string(),
-                    args: [("val2".to_string(), "200".to_string())].into(),
-                    ..Default::default()
-                }
-            ],
+            inputs: vec![InputGroup {
+                name: "local1".to_string(),
+                args: [("val2".to_string(), ArgValue::Single("200".to_string()))].into(),
+                ..Default::default()
+            }],
             ..Default::default()
         };
 
@@ -373,23 +450,19 @@ mod test {
         let mut shared_inputs = HashMap::new();
         shared_inputs.insert(
             "group1".to_string(),
-            vec![
-                InputGroup {
-                    name: "g1_input1".to_string(),
-                    args: [("size".to_string(), "100".to_string())].into(),
-                    ..Default::default()
-                }
-            ],
+            vec![InputGroup {
+                name: "g1_input1".to_string(),
+                args: [("size".to_string(), ArgValue::Single("100".to_string()))].into(),
+                ..Default::default()
+            }],
         );
         shared_inputs.insert(
             "group2".to_string(),
-            vec![
-                InputGroup {
-                    name: "g2_input1".to_string(),
-                    args: [("count".to_string(), "50".to_string())].into(),
-                    ..Default::default()
-                }
-            ],
+            vec![InputGroup {
+                name: "g2_input1".to_string(),
+                args: [("count".to_string(), ArgValue::Single("50".to_string()))].into(),
+                ..Default::default()
+            }],
         );
 
         let test = Test {
@@ -405,5 +478,79 @@ mod test {
         assert_eq!(processed.len(), 2);
         assert!(processed.iter().any(|t| t.name == "multi_test_g1_input1"));
         assert!(processed.iter().any(|t| t.name == "multi_test_g2_input1"));
+    }
+
+    #[test]
+    fn test_list_input_expansion() {
+        let test = Test {
+            name: "list_test".to_string(),
+            cmds: vec![Cmd {
+                opfunc: "test_func".to_string(),
+                condition: Condition::Eq("$val".to_string()),
+                args: vec!["arg=$val".to_string()],
+                perf: false,
+            }],
+            thread_num: 1,
+            should_panic: false,
+            break_if_fail: true,
+            inputs: vec![InputGroup {
+                name: "list_input".to_string(),
+                args: [(
+                    "val".to_string(),
+                    ArgValue::List(vec!["a".into(), "b".into(), "c".into()]),
+                )]
+                .iter()
+                .cloned()
+                .collect(),
+                should_panic: None,
+                break_if_fail: None,
+            }],
+            ref_names: vec![],
+        };
+
+        let processed = test.process_input_group();
+        assert_eq!(processed.len(), 3);
+        assert_eq!(processed[0].name, "list_test_list_input_0");
+        assert_eq!(processed[1].name, "list_test_list_input_1");
+        assert_eq!(processed[2].name, "list_test_list_input_2");
+    }
+
+    #[test]
+    fn test_range_input_expansion() {
+        let test = Test {
+            name: "range_test".to_string(),
+            cmds: vec![Cmd {
+                opfunc: "test_func".to_string(),
+                condition: Condition::Eq("$val".to_string()),
+                args: vec!["arg=$val".to_string()],
+                perf: false,
+            }],
+            thread_num: 1,
+            should_panic: false,
+            break_if_fail: true,
+            inputs: vec![InputGroup {
+                name: "range_input".to_string(),
+                args: [(
+                    "val".to_string(),
+                    ArgValue::Range(RangeExpr {
+                        start: 1,
+                        end: 3,
+                        step: Some(1),
+                    }),
+                )]
+                .iter()
+                .cloned()
+                .collect(),
+                should_panic: None,
+                break_if_fail: None,
+            }],
+            ref_names: vec![],
+        };
+
+        let processed = test.process_input_group();
+        assert_eq!(processed.len(), 3);
+        assert_eq!(processed[0].name, "range_test_range_input_0");
+        assert_eq!(processed[1].name, "range_test_range_input_1");
+        assert_eq!(processed[2].name, "range_test_range_input_2");
     }
 }

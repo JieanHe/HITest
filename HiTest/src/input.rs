@@ -12,9 +12,24 @@ pub struct InputGroup {
     #[serde(default = "default_input_name")]
     pub name: String,
     #[serde(default)]
-    pub args: HashMap<String, String>,
+    pub args: HashMap<String, ArgValue>,
     #[serde(default)]
     pub should_panic: Option<bool>,
     #[serde(default)]
     pub break_if_fail: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(untagged)]
+pub enum ArgValue {
+    Single(String),
+    List(Vec<String>),
+    Range(RangeExpr),
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct RangeExpr {
+    pub start: i32,
+    pub end: i32,
+    pub step: Option<i32>,
 }
