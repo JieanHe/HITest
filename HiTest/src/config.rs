@@ -109,9 +109,9 @@ impl Config {
         if let Some(concurrences) = self.concurrences {
             info!("Starting run concurrency groups!");
             for mut concurrency in concurrences {
-                let (success_num, expect) = concurrency.run(&tests);
-                total_tests += expect;
-                success_tests += success_num;
+                let res = concurrency.run(&tests);
+                total_tests += res.total;
+                success_tests += res.success;
                 concurrency.record_test(&mut concurrency_tests);
             }
         }
@@ -124,14 +124,13 @@ impl Config {
 
         // run remaining test cases
         for test in tests {
-            let (succ, total) = test.run();
-            total_tests += total;
-            success_tests += succ;
-            failed_tests += total - succ;
+            let res = test.run();
+            total_tests += res.total;
+            success_tests += res.success;
         }
 
         let mut stdout = StandardStream::stdout(ColorChoice::Always);
-        if failed_tests == 0 {
+        if total_tests == success_tests {
             stdout
                 .set_color(ColorSpec::new().set_fg(Some(Color::Green)))
                 .unwrap();
@@ -143,7 +142,7 @@ impl Config {
         writeln!(
             stdout,
             "Global Summary: Total tests: {}, Success: {}, Failure: {}",
-            total_tests, success_tests, failed_tests
+            total_tests, success_tests, total_tests - success_tests
         )
         .unwrap();
         stdout.reset().unwrap();

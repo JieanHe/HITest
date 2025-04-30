@@ -1,4 +1,4 @@
-use crate::Test;
+use crate::{Test, TestResult};
 use log::{debug, error, info};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::Deserialize;
@@ -14,9 +14,9 @@ fn default_name() -> String {
 }
 
 impl ConcurrencyGroup {
-    pub fn run(&mut self, tests: &Vec<Test>) -> (usize, usize) {
+    pub fn run(&mut self, tests: &Vec<Test>) ->TestResult {
         if self.tests.is_empty() {
-            return (0, 0);
+            return TestResult { total: 0, success: 0};
         }
 
         let mut test_cases: Vec<Test> = Vec::new();
@@ -29,7 +29,7 @@ impl ConcurrencyGroup {
         }
 
         if test_cases.is_empty() {
-            return (0, 0);
+            return TestResult { total: 0, success: 0};
         }
 
         debug!(
@@ -37,25 +37,30 @@ impl ConcurrencyGroup {
             self.name, self.tests
         );
 
-        let results: Vec<_> = test_cases.into_par_iter().map(|test| test.run()).collect();
+        let results: Vec<_> = test_cases
+        .into_par_iter()
+        .map(|test| test.run())
+        .collect();
 
-        let expect_success_num = results.len();
-        let count = results.into_iter().filter(|&(s, t)| s == t).count();
+        let total = results.iter().map(|r| r.total).sum();
+        let success = results.iter().map(|r| r.success).sum();
 
-        let success = count as usize == expect_success_num;
-        if success {
+        if total == success  {
             info!(
                 "Parallel execute concurrency Group {} with {} thread, all passed!\n",
-                self.name, expect_success_num
+                self.name, total
             );
         } else {
             error!(
                 "Parallel execute concurrency Group {} with {} thread, {} passed!\n",
-                self.name, expect_success_num, count
+                self.name, total, success
             );
         }
 
-        return (count, expect_success_num);
+        TestResult {
+            total,
+            success,
+        }
     }
 
     pub fn record_test(&self, tests: &mut Vec<String>) {

@@ -5,7 +5,7 @@ use condition::Condition;
 mod cmd;
 use cmd::Cmd;
 mod test;
-use test::Test;
+use test::{Test, TestResult};
 mod config;
 pub use config::Config;
 mod input;

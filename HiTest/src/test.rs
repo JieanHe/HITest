@@ -32,6 +32,10 @@ pub struct Test {
     #[serde(default)]
     pub ref_names: Vec<String>,
 }
+pub struct TestResult {
+    pub success: usize,
+    pub total: usize,
+}
 
 impl Test {
     #[cfg(unix)]
@@ -243,7 +247,7 @@ impl Test {
         vec![current]
     }
 
-    pub fn run(&self) -> (usize, usize) {
+    pub fn run(&self) -> TestResult {
         debug!("start executing test case {}.", self);
         let tests = self.process_input_group();
         let tests: Vec<_> = tests
@@ -276,13 +280,18 @@ impl Test {
         let success_count = results.iter().filter(|&&x| x).count();
         if total_count != success_count {
             error!(
-                "Test {} execute failed! {} passed, {} failed!\n",
+                "Test {} execute {} sub test failed! {} passed, {} failed!\n",
                 self.name,
+                total_count,
                 success_count,
                 total_count - success_count
             );
         }
-        (success_count, total_count)
+
+        TestResult {
+            success: success_count,
+            total: total_count
+        }
     }
 
     pub fn push_back(&mut self, cmd: Cmd) {
