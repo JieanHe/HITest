@@ -363,7 +363,7 @@ fn replace_vars(s: String, vars: &HashMap<String, ArgValue>) -> String {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{ArgValue, RangeExpr};
+    use crate::{ArgValue, input::RangeExpr};
 
     #[test]
     fn test_replace_vars() {

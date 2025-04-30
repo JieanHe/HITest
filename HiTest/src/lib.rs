@@ -9,4 +9,4 @@ use test::{Test, TestResult};
 mod config;
 pub use config::Config;
 mod input;
-use input::{InputGroup, ArgValue, RangeExpr};
+use input::{InputGroup, ArgValue};
