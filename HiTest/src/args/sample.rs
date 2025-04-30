@@ -63,7 +63,8 @@ tests = ["test_rw_u32", "test_rw_u64", "Test_str_fill"]
 [shared_inputs]
 common1 = [
     { name = "ipt1", args = {  write_val = "888", off = "0x0" } },
-    { name = "ipt2", args = {  write_val = "999", off = "0x10" } },
+    { name = "ipt2", args = {  write_val = "999", off = ["0x10", "0x20", "0x30"] } },
+    { name = "ipt2", args = {  write_val = "999", off = { start = 0x10, end = 0x50, step = 5 } } },
 ]
 common2 = [
     { name = "ipt3", args = {  write_val = "555", off = "0x100" } }
@@ -148,7 +149,8 @@ cmds = [
         "str2=2",
     ] },
 ]
-inputs = [{ args = { second_len = "!7" } }, { args = { second_len = "10" } }]
+inputs = [{ args = { second_len = "!7" } }, { args = { second_len = ["10", "15", "18"] } }]
+
 
 "#
         .to_string();

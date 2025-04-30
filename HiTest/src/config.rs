@@ -93,7 +93,6 @@ impl Config {
         }
         let mut total_tests = 0;
         let mut success_tests = 0;
-        let mut failed_tests = 0;
 
         // apply envs
         let tests = self.apply_envs();
