@@ -30,7 +30,7 @@ pub struct Test {
     #[serde(default)]
     pub inputs: Vec<InputGroup>,
     #[serde(default)]
-    pub ref_names: Vec<String>,
+    pub ref_inputs: Vec<String>,
 }
 pub struct TestResult {
     pub success: usize,
@@ -305,7 +305,7 @@ impl Test {
     pub fn merge_shared_inputs(&mut self, shared_inputs: &HashMap<String, Vec<InputGroup>>) {
         let mut merged = Vec::new();
 
-        for ref_name in &self.ref_names {
+        for ref_name in &self.ref_inputs {
             if let Some(groups) = shared_inputs.get(ref_name) {
                 merged.extend(groups.clone());
             } else {
@@ -414,7 +414,7 @@ mod test {
                     break_if_fail: None,
                 },
             ],
-            ref_names: vec![],
+            ref_inputs: vec![],
         };
         let processed = test.process_input_group();
         assert_eq!(processed.len(), 2);
@@ -436,7 +436,7 @@ mod test {
 
         let test = Test {
             name: "test1".to_string(),
-            ref_names: vec!["common".to_string()],
+            ref_inputs: vec!["common".to_string()],
             inputs: vec![InputGroup {
                 name: "local1".to_string(),
                 args: [("val2".to_string(), ArgValue::Single("200".to_string()))].into(),
@@ -476,7 +476,7 @@ mod test {
 
         let test = Test {
             name: "multi_test".to_string(),
-            ref_names: vec!["group1".to_string(), "group2".to_string()],
+            ref_inputs: vec!["group1".to_string(), "group2".to_string()],
             ..Default::default()
         };
 
@@ -514,7 +514,7 @@ mod test {
                 should_panic: None,
                 break_if_fail: None,
             }],
-            ref_names: vec![],
+            ref_inputs: vec![],
         };
 
         let processed = test.process_input_group();
@@ -553,7 +553,7 @@ mod test {
                 should_panic: None,
                 break_if_fail: None,
             }],
-            ref_names: vec![],
+            ref_inputs: vec![],
         };
 
         let processed = test.process_input_group();

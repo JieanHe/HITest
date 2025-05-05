@@ -42,7 +42,7 @@ hitest是一个通用的读配置文件调接口校验返回值的工具。 与�
   - should_panic: <可选> 改Test是否预期会Crash，不指定时默认为false
   - break_if_fail: <可选> cmds组中某一个Cmd执行失败是否打断后续cmd执行。不指定时默认为1
   - inputs： 高级功能，允许使用多组输入参数。
-  - ref_names： 高级功能，允许在cmds的头和尾增加其他Cmd 列表做资源的初始化和清理。
+  - ref_inputs： 高级功能，允许在cmds的头和尾增加其他Cmd 列表做资源的初始化和清理。
 - Env： Env是一个多个测试用例公共的资源初始化和资源释放Cmd列表的封装。包含
 
   - name:  一个字符串， 用于report信息

@@ -89,7 +89,7 @@ cmds = [
 
 ]
 inputs = [ { name = "ipt4", args = { alloc_size = "0x1000", write_val = "888", off = "0xffc" } }]
-ref_names = ["common1", "common2"]
+ref_inputs = ["common1", "common2"]
 
 [[tests]]
 name = "test_rw_u64"
@@ -106,7 +106,7 @@ cmds = [
     ] },
 ]
 inputs = [ { name = "ipt4", should_panic = false, args = { write_val = "888", off = "0x400" } }]
-ref_names = ["common1"]
+ref_inputs = ["common1"]
 
 [[tests]]
 name = "Test_str_fill"
