@@ -149,7 +149,7 @@ cmds = [
         "str2=2",
     ] },
 ]
-inputs = [{ args = { second_len = "!7" } }, { args = { second_len = ["10", "15", "18"] } }]
+inputs = [{ args = { second_len = "!7" } }, { args = { second_len = ["10", "!15", "!18"] } }]
 
 
 "#
