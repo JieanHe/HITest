@@ -90,6 +90,24 @@ EXPORT_FUNC(write32, addr_idx, off, val)
     return 0;
 }
 
+EXPORT_FUNC(readu8, addr_idx, off)
+{
+    CHECK_PARAM_LEN(2);
+    GET_INPUT_IDX_NZ(uint64_t, addr_idx, 0);
+    GET_VALUE(size_t, off, 1);
+
+    return *(uint8_t *)(addr_idx + off);
+}
+
+EXPORT_FUNC(readu16, addr_idx, off)
+{
+    CHECK_PARAM_LEN(2);
+    GET_INPUT_IDX_NZ(uint64_t, addr_idx, 0);
+    GET_VALUE(size_t, off, 1);
+
+    return *(uint8_t *)(addr_idx + off);
+}
+
 EXPORT_FUNC(strncpy, dst_idx, str, len)
 {
     CHECK_PARAM_LEN(3);
