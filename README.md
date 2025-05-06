@@ -302,8 +302,9 @@ cmds = [
 ### 多组输入测试
 
 可以在Test中新增通过inputs参数指定多组输入，并且在cmds中使用${para_name}来引用输入参数。如此可以复用同一组Cmd的调用顺序配置。
-每一组参数可以指定多个输入参数，以及本组参数的组名用于报告执行结果， 不指定组名时，自动命名为default1, default2, ...
-如：
+每一组参数可以指定多个输入参数，以及本组参数的组名用于报告执行结果，参数值支持单个值、指定列表和列表生成式。
+
+- 单个值， 在cmd中的参数使用在cmds中使用${para_name}来引用输入参数， inputs的args里面给定param_name=“param_value”即可。
 
 ```toml
 [[tests]]
@@ -319,6 +320,40 @@ inputs = [
 {name = "ipt1", args = { alloc_size = "100", write_val = "888" } },
 { args = { alloc_size = "200", write_val = "999" } },   # 自动命名为default1
 { args = { alloc_size = "50", write_val = "555" } }    # 自动命名为default2
+]
+```
+
+- 指定列表。 当inputs的args里面参数给了列表时，列表里面的每一个元素会被应用到cmd里面，生成独立的test备份，这些不同参数的test会被并发的执行。比如下面的例子会有三个Test并发执行，他们分别使用不同的off参数
+
+```toml
+[[tests]]
+name = "test_rw_u32"
+thread_num=2
+cmds = [
+{ opfunc = "Call_malloc", expect_eq = 0, perf=true, args = ["len=$alloc_size", "mem_idx=1"] },
+{ opfunc = "Call_write32", expect_eq = 0, perf=true, args = ["addr_idx=1", "val=12345678", off="$off"] },
+{ opfunc = "Call_read32", expect_eq = "12345678", perf=true, args = ["addr_idx=1", off="$off"] },
+{ opfunc = "Call_free", expect_eq = 0, perf=true, args = ["mem_idx=1"] },
+]
+inputs = [
+{name = "ipt1", args = { alloc_size = "100", off= ["0", "50", "96" ]} },
+]
+```
+
+- 列表生成式，可以使用 start,end, step三个参数来指定生成一个参数序列，序列中的每一个参数都会被应用到cmds里面生成多个test备份，这些test会被并发执行。比如下面的例子将会生成0，10，20，30，40，50，60，70，80，90的off序列，进一步生成10个test实例并发执行。
+
+```toml
+[[tests]]
+name = "test_rw_u32"
+thread_num=2
+cmds = [
+{ opfunc = "Call_malloc", expect_eq = 0, perf=true, args = ["len=$alloc_size", "mem_idx=1"] },
+{ opfunc = "Call_write32", expect_eq = 0, perf=true, args = ["addr_idx=1", "val=12345678", off="$off"] },
+{ opfunc = "Call_read32", expect_eq = "12345678", perf=true, args = ["addr_idx=1", off="$off"] },
+{ opfunc = "Call_free", expect_eq = 0, perf=true, args = ["mem_idx=1"] },
+]
+inputs = [
+{name = "ipt1", args = { alloc_size = "100", off= {start=0, end=96, step=10}} },
 ]
 ```
 
@@ -376,7 +411,6 @@ ref_inputs = ["common1", "common2"]
 ```
 
 这个用例会依次想addr_idx=0代表的内存偏移0处写入888并都会，向偏移0x10处写入999并读回，向偏移0x100处写入555并都会，向偏移0xffc处写入888并读回来。
-
 
 
 ## 使用说明
