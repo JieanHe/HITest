@@ -168,32 +168,39 @@ impl Test {
                 test.should_panic = input.should_panic.unwrap_or(self.should_panic);
                 test.name = format!("{}_{}", self.name, input.name);
 
+                let resolved_args: HashMap<String, ArgValue> = input
+                    .args
+                    .iter()
+                    .filter(|(_, v)| matches!(v, ArgValue::Single(_)))
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+
                 test.cmds = test
                     .cmds
                     .iter()
                     .map(|cmd| {
-                        let resolved_args = cmd
-                            .args
-                            .iter()
-                            .map(|arg| replace_vars(arg.clone(), &input.args))
-                            .collect();
-
                         let condition = match &cmd.condition {
                             Condition::Eq(s) => {
-                                let replaced = replace_vars(s.clone(), &input.args);
+                                let replaced = replace_vars(s.clone(), &resolved_args);
                                 if replaced.starts_with("!") {
                                     Condition::Ne(replaced[1..].to_string())
                                 } else {
                                     Condition::Eq(replaced)
                                 }
                             }
-                            Condition::Ne(s) => Condition::Ne(replace_vars(s.clone(), &input.args)),
+                            Condition::Ne(s) => {
+                                Condition::Ne(replace_vars(s.clone(), &resolved_args))
+                            }
                         };
 
                         Cmd {
                             opfunc: cmd.opfunc.clone(),
                             condition,
-                            args: resolved_args,
+                            args: cmd
+                                .args
+                                .iter()
+                                .map(|arg| replace_vars(arg.clone(), &resolved_args))
+                                .collect(),
                             perf: cmd.perf,
                         }
                     })
@@ -290,7 +297,7 @@ impl Test {
 
         TestResult {
             success: success_count,
-            total: total_count
+            total: total_count,
         }
     }
 
@@ -363,7 +370,7 @@ fn replace_vars(s: String, vars: &HashMap<String, ArgValue>) -> String {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{ArgValue, input::RangeExpr};
+    use crate::{input::RangeExpr, ArgValue};
 
     #[test]
     fn test_replace_vars() {
@@ -561,5 +568,38 @@ mod test {
         assert_eq!(processed[0].name, "range_test_range_input_0");
         assert_eq!(processed[1].name, "range_test_range_input_1");
         assert_eq!(processed[2].name, "range_test_range_input_2");
+    }
+
+    #[test]
+    fn test_same_arg_in_multi_cmd() {
+        let test = Test {
+            name: "multi_test".to_string(),
+            cmds: vec![
+                Cmd {
+                    opfunc: "test_func1".to_string(),
+                    condition: Condition::Eq("$val".to_string()),
+                    args: vec!["arg=$val".to_string()],
+                    perf: false,
+                },
+                Cmd {
+                    opfunc: "test_func2".to_string(),
+                    condition: Condition::Eq("$val".to_string()),
+                    args: vec!["arg=$val".to_string()],
+                    perf: false,
+                },
+            ],
+            inputs: vec![InputGroup {
+                name: "test_input".to_string(),
+                args: [
+                    ("val".to_string(), ArgValue::List(vec!["100".to_string(), "200".to_string()])),
+                ]
+                .into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let processed = test.process_input_group();
+        assert_eq!(processed.len(), 2);
     }
 }

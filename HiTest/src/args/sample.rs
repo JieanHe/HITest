@@ -88,7 +88,7 @@ cmds = [
     ] },
 
 ]
-inputs = [ { name = "ipt4", args = { alloc_size = "0x1000", write_val = "888", off = "0xffc" } }]
+inputs = [ { name = "ipt4", args = { alloc_size = "0x1000", write_val = "888", off = ["0xffc", "0x100", "0x330", "0x555"] } }]
 ref_inputs = ["common1", "common2"]
 
 [[tests]]
@@ -105,7 +105,7 @@ cmds = [
         "off=$off",
     ] },
 ]
-inputs = [ { name = "ipt4", should_panic = false, args = { write_val = "888", off = "0x400" } }]
+inputs = [ { name = "ipt4", should_panic = false, args = { write_val = "888", off = ["0x400", "0x800", "0xc00", "0xffc"] } }]
 ref_inputs = ["common1"]
 
 [[tests]]
@@ -150,7 +150,6 @@ cmds = [
     ] },
 ]
 inputs = [{ args = { second_len = "!7" } }, { args = { second_len = ["10", "!15", "!18"] } }]
-
 
 "#
         .to_string();
