@@ -1,24 +1,20 @@
-use super::{Cmd, ConcurrencyGroup, InputGroup, Test};
+use super::{ConcurrencyGroup, Env, InputGroup, ResourceEnv, Test};
 use log::{debug, info};
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::io::Write;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
-use std::collections::HashMap;
 
-#[derive(Debug, Deserialize, Clone)]
-struct Env {
-    pub name: String,
-    pub init: Vec<Cmd>,
-    pub exit: Vec<Cmd>,
-    pub tests: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct Config {
     #[serde(default)]
     concurrences: Option<Vec<ConcurrencyGroup>>,
     #[serde(default)]
     envs: Vec<Env>,
+    #[serde(default)]
+    thread_env: Option<Env>,
+    #[serde(default)]
+    process_env: Option<Env>,
     #[serde(default)]
     shared_inputs: HashMap<String, Vec<InputGroup>>,
     tests: Vec<Test>,
@@ -63,17 +59,18 @@ impl Config {
         let global_env = self.envs.iter().find(|e| e.tests.is_empty());
 
         let mut tests = self
-        .tests.clone()
-        .into_iter()
-        .map(|mut test| {
-            for env in &self.envs {
-                if env.tests.contains(&test.name) {
-                    Self::set_env(&mut test, &env);
+            .tests
+            .clone()
+            .into_iter()
+            .map(|mut test| {
+                for env in &self.envs {
+                    if env.tests.contains(&test.name) {
+                        Self::set_env(&mut test, &env);
+                    }
                 }
-            }
-            test
-        })
-        .collect::<Vec<_>>();
+                test
+            })
+            .collect::<Vec<_>>();
 
         if let Some(global_env) = global_env {
             for test in &mut tests {
@@ -82,6 +79,7 @@ impl Config {
         }
         tests
     }
+
     pub fn run(self) {
         if self.tests.is_empty() {
             info!("no test cases be find, do nothing!");
@@ -93,21 +91,31 @@ impl Config {
         }
         let mut total_tests = 0;
         let mut success_tests = 0;
-
-        // apply envs
+        // apply env init
+        if let Some(ref process_env) = self.process_env {
+            process_env.apply_env_init();
+        }
+        if let Some(ref thread_env) = self.thread_env {
+            thread_env.apply_env_init();
+        }
+        ResourceEnv::init(self.thread_env.clone(), self.process_env.clone());
+        // apply envs for test cases
         let tests = self.apply_envs();
         // merge shared inputs
         let shared_inputs = self.shared_inputs.clone();
-        let tests = tests.into_iter().map(|mut test| {
-            test.merge_shared_inputs(&shared_inputs);
-            test
-        }).collect::<Vec<_>>();
+        let tests = tests
+            .into_iter()
+            .map(|mut test| {
+                test.merge_shared_inputs(&shared_inputs);
+                test
+            })
+            .collect::<Vec<_>>();
 
         // run concurrency group
         let mut concurrency_tests: Vec<String> = Vec::new();
-        if let Some(concurrences) = self.concurrences {
+        if let Some(ref concurrences) = self.concurrences {
             info!("Starting run concurrency groups!");
-            for mut concurrency in concurrences {
+            for concurrency in concurrences {
                 let res = concurrency.run(&tests);
                 total_tests += res.total;
                 success_tests += res.success;
@@ -128,6 +136,13 @@ impl Config {
             success_tests += res.success;
         }
 
+        // apply env exit
+        if let Some(ref thread_env) = self.thread_env {
+            thread_env.apply_env_exit();
+        }
+        if let Some(ref process_env) = self.process_env {
+            process_env.apply_env_exit();
+        }
         let mut stdout = StandardStream::stdout(ColorChoice::Always);
         if total_tests == success_tests {
             stdout
@@ -141,13 +156,14 @@ impl Config {
         writeln!(
             stdout,
             "Global Summary: Total tests: {}, Success: {}, Failure: {}",
-            total_tests, success_tests, total_tests - success_tests
+            total_tests,
+            success_tests,
+            total_tests - success_tests
         )
         .unwrap();
         stdout.reset().unwrap();
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -158,12 +174,23 @@ mod tests {
     fn test_validate_global_env() {
         let config = Config {
             envs: vec![
-                Env { name: "global1".into(), init: vec![], exit: vec![], tests: vec![] },
-                Env { name: "global2".into(), init: vec![], exit: vec![], tests: vec![] },
+                Env {
+                    name: "global1".into(),
+                    init: vec![],
+                    exit: vec![],
+                    tests: vec![],
+                },
+                Env {
+                    name: "global2".into(),
+                    init: vec![],
+                    exit: vec![],
+                    tests: vec![],
+                },
             ],
             tests: vec![],
             concurrences: None,
             shared_inputs: HashMap::new(),
+            ..Default::default()
         };
         assert!(config.validate().is_err());
     }
@@ -172,22 +199,46 @@ mod tests {
     fn test_validate_test_multiple_envs() {
         let config = Config {
             envs: vec![
-                Env { name: "env1".into(), init: vec![], exit: vec![], tests: vec!["test1".into()] },
-                Env { name: "env2".into(), init: vec![], exit: vec![], tests: vec!["test1".into()] },
+                Env {
+                    name: "env1".into(),
+                    init: vec![],
+                    exit: vec![],
+                    tests: vec!["test1".into()],
+                },
+                Env {
+                    name: "env2".into(),
+                    init: vec![],
+                    exit: vec![],
+                    tests: vec!["test1".into()],
+                },
             ],
-            tests: vec![Test { name: "test1".into(), ..Default::default() }],
-            concurrences: None,
-            shared_inputs: HashMap::new(),
+            tests: vec![Test {
+                name: "test1".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
         };
         assert!(config.validate().is_err());
     }
 
     #[test]
     fn test_env_application_order() {
-        let global_init = Cmd { opfunc: "global_init".into(), ..Default::default() };
-        let global_exit = Cmd { opfunc: "global_exit".into(),..Default::default() };
-        let local_init = Cmd { opfunc: "local_init".into(), ..Default::default() };
-        let local_exit = Cmd { opfunc: "local_exit".into(),..Default::default() };
+        let global_init = Cmd {
+            opfunc: "global_init".into(),
+            ..Default::default()
+        };
+        let global_exit = Cmd {
+            opfunc: "global_exit".into(),
+            ..Default::default()
+        };
+        let local_init = Cmd {
+            opfunc: "local_init".into(),
+            ..Default::default()
+        };
+        let local_exit = Cmd {
+            opfunc: "local_exit".into(),
+            ..Default::default()
+        };
         let config = Config {
             envs: vec![
                 Env {
@@ -203,9 +254,11 @@ mod tests {
                     tests: vec!["test1".into()],
                 },
             ],
-            tests: vec![Test { name: "test1".into(), ..Default::default() }],
-            concurrences: None,
-            shared_inputs: HashMap::new(),
+            tests: vec![Test {
+                name: "test1".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
         };
 
         let tests = config.apply_envs();

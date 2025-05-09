@@ -6,12 +6,12 @@ hitest是一个通用的读配置文件调接口校验返回值的工具。 与�
 
 业务SDK开发人员你需要提供
 
-- 一个wrarper库， 包含待测SDK的所有待测接口，并封装成统一的形式： `s64 *(api_name)(u64 *param_page, s64 *params, s64 param_len)`. 其中
+- 一个wrapper库， 包含待测SDK的所有待测接口，并封装成统一的形式： `s64 *(api_name)(u64 *param_page, s64 *params, s64 param_len)`. 其中
   - `param_page` 是框架提供的线程本地内存，可容纳64个DWORD，用于各个API之间交换信息。
   - `prarams` 是测试用例调用时从配置文件获取的参数
   - `param_len` 是测试用例提供的参数数量
   - 返回值为64位有符号数
-- 一份wrarper库配置文件，指明包装的接口名，和所有参数。该配置文件需要为toml格式。
+- 一份wrapper库配置文件，指明包装的接口名，和所有参数。该配置文件需要为toml格式。
 
 测试用例开发人员需要
 
@@ -26,12 +26,12 @@ hitest是一个通用的读配置文件调接口校验返回值的工具。 与�
   - expect_ne  断言API返回值不等于
 - Cmd：Cmd是对一个待测接口的最小封装，指定一个API的调用参数和预期返回值。有如下属性：
 
-  - opfunc:  调用接口的名称，来自SDK开发人员提供的wrarper库。
+  - opfunc:  调用接口的名称，来自SDK开发人员提供的wrapper库。
   - args: 参数列表， 每一个参数使用 "\$parm\_name=\$pram_val"的形式, 其中param_val可以是
     - 任意数字  输入的数字，比如memset需要填充的初始值
     - 数组下标
-      - 当API需要向其他API输出信息时，wrarper库需要将资源地址存入param_page的该下标。
-      - 当API需要从其它API获取信息时，wrarper库需要从pram_page的该下标处获取资源地址。
+      - 当API需要向其他API输出信息时，wrapper库需要将资源地址存入param_page的该下标。
+      - 当API需要从其它API获取信息时，wrapper库需要从pram_page的该下标处获取资源地址。
     - 字符串  也是作为纯输入，输入字符串时用单引号将字符串内容包裹起来。如 `"str_param='a str demo'"`
   - perf: 是否统计性能，当此字段设为true时，框架会统计调用opfunc指向的API的耗时并report出来。
 - Test： Test是一个测试用例存在，内含有一组Cmd。有如下属性:
@@ -66,6 +66,9 @@ hitest是一个通用的读配置文件调接口校验返回值的工具。 与�
   - envs：<可选> 包含多个Env的列表。不配置时默认无Env
   - shared_inputs： <可选> 包含多个Input，用于在多个测试用例之间共享Input组
   - concurrences: <可选> 可以指定多个并发组，一个并发组内是多个需要并发执行的Test的name。
+  - thread_env: <可选> 可以指定一个Env，用于指定SDK中依赖的本地资源注册和注销。
+  - process_env: <可选> 可以指定一个Env，用于指定SDK中依赖的进程全局资源注册和注销。
+  - shared_inputs: <可选> 可以指定多个InputGroup的哈希表，用于在多个测试用例之间共享Input组。
 
 ## 核心功能
 
@@ -129,9 +132,9 @@ long Call_free(uint64_t *param_page, const uint64_t *params, long param_len)
 
 ```
 
-当编写完此wrarper后，还需提供配置文件指明这个库的所有导出函数名和各个参数的含义。配置文件为toml格式，好函一个Library列表。 Library有两个字段：
+当编写完此wrapper后，还需提供配置文件指明这个库的所有导出函数名和各个参数的含义。配置文件为toml格式，好函一个Library列表。 Library有两个字段：
 
-- path： wrarper库文件的路径
+- path： wrapper库文件的路径
 - funcs：所有导出函数的列表。其中funcs的每一个func又有如下字段：
   - name：一个字符串，是API的函数名
   - paras： 一个字符串列表，调用该API需要指明的参数名列表
@@ -139,9 +142,9 @@ long Call_free(uint64_t *param_page, const uint64_t *params, long param_len)
 比如上面的例子中Call_malloc使用了两个参数，第一个是输出内存下标 out_mem_idx，第二个是申请内存的长度 alloc_size。Call_free使用了一个参数，是param_page内malloc输出的内存地址所在位置in_mem_idx。于是就可以做如下配置文件
 
 ```toml
-# libc_wrarper.toml
+# libc_wrapper.toml
 [[libs]]
-path = "libc_wrarper.so"
+path = "libc_wrapper.so"
 funcs = [
     { name = "Call_malloc", paras = [
         "alloc_size",
@@ -154,10 +157,13 @@ funcs = [
 ```
 
 这里的参数名，尽量按照API使用的真正含义来命名，但不强制。只要与测试用例编写人员约定好即可。调用这两个API的测试用例见[这里](https://)
+**注意**
+ - 如果SDK有线程本地资源，请在wrapper库中提供相应的导出函数
+ - 如果SDK有进程级别的一次性资源，如果需要进行死亡测试，请在wrapper库中提供相应的导出函数
 
-### 快速编写wrarper库
+### 快速编写wrapper库
 
-由于编写此库的所有函数有非常相似的代码，为避免重复工作，在sample目录下提供了一个exprot_function.h。 这里面定义了一些方便的宏。并且在scripts内提供了generate_config.py， 使用exprot_function.h下面提供的EXPORT_FUNC宏定义的API可以使用python运行这个脚本自动生成对应的配置文件。
+由于编写此库的所有函数有非常相似的代码，为避免重复工作，在sample目录下提供了一个export_function.h。 这里面定义了一些方便的宏。并且在scripts内提供了generate_config.py， 使用exprot_function.h下面提供的EXPORT_FUNC宏定义的API可以使用python运行这个脚本自动生成对应的配置文件。
 
 #### export_function.h
 
@@ -280,6 +286,8 @@ cmds = [
 { opfunc = "Call_read32", expect_eq = 888, args = ["addr_idx=1", ] },
 ]
 ```
+**注意**
+- 死亡测试依赖fork起子进程，不会重复执行so的constructor和destructor。如果SO使用constructor和destructor来注册资源，需要在测试用例中使用process_env来注册资源，否则可能无法运行到预期crash的代码。
 
 ### 性能测试
 
@@ -376,6 +384,23 @@ tests = ["test_rw_u32", "test_rw_u32_ne"]
 - env使用的idx与属于测试用例线程，保证tests列表的测试用例使用的idx不会与init和exit使用的冲突。
 - 当env的tests列表为空时，这个Env为全局env，所有Test都会应用这个Env，一份配置文件内全局env至多一个。
 - 可以同时使用全局env和非全局的env，这是全局env最先初始化最后注销。但是不允许同时使用两个非全局的env。
+
+### 线程私有环境
+可以在config中通过thread_env和process_env参数指定线程私有环境和进程私有环境， 线程私有环境会在每个线程创建时初始化，进程私有环境会在进程创建时初始化。
+线程私有环境和进程私有环境的使用方法与Env相同，但是线程私有环境只会在每个线程创建时初始化，进程私有环境只会在进程创建时初始化。
+```toml
+[thread_env]
+name = "thread_env_demo"
+init = { opfunc = "Call_malloc", expect_eq = 0, args=["len=10000", "mem_idx=51"] }
+exit = { opfunc = "Call_free", expect_eq = 0, args=["mem_idx=51"] }
+
+
+[process_env]
+name = "process_env_demo"
+init = { opfunc = "Call_malloc", expect_eq = 0, args=["len=10000", "mem_idx=52"] }
+exit = { opfunc = "Call_free", expect_eq = 0, args=["mem_idx=52"] }
+
+```
 
 ### 复用输入参数组
 

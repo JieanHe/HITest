@@ -1,4 +1,4 @@
-use super::{ArgValue, Cmd, Condition, InputGroup};
+use super::{ArgValue, Cmd, Condition, InputGroup, ResourceEnv, ThreadInfo};
 use log::{debug, error, info};
 #[cfg(unix)]
 use nix::{sys::wait::waitpid, sys::wait::WaitStatus, unistd::fork, unistd::ForkResult};
@@ -46,9 +46,23 @@ impl Test {
         );
         match unsafe { fork() } {
             Ok(ForkResult::Child) => {
+                let res_env = ResourceEnv::get_instance().lock().unwrap();
+                if let Some(process_env) = &res_env.process_env {
+                    process_env.apply_env_init();
+                }
+                if let Some(thread_env) = &res_env.thread_env {
+                    thread_env.apply_env_init();
+                }
                 child_test.thread_num = 1;
                 child_test.should_panic = false;
+                if let Some(thread_env) = &res_env.thread_env {
+                    thread_env.apply_env_exit();
+                }
+                if let Some(process_env) = &res_env.process_env {
+                    process_env.apply_env_exit();
+                }
                 let res = child_test.run_one_thread();
+
                 exit(if res { 0 } else { 1 });
             }
             Ok(ForkResult::Parent { child }) => {
@@ -98,9 +112,24 @@ impl Test {
     }
 
     fn run_one_thread(&self) -> bool {
+        let mut cmds: Vec<Cmd> = self.cmds.clone();
+        let is_main_thread = ThreadInfo::get_instance().lock().unwrap().is_main_thread();
+
+        if !is_main_thread {
+            let res_env = ResourceEnv::get_instance().lock().unwrap();
+            let thread_env = res_env.thread_env.as_ref().unwrap();
+            info!("start executing test case {} with thread env.", self.name);
+            for cmd in thread_env.init.iter().rev() {
+                cmds.insert(0, cmd.clone());
+            }
+            for cmd in &thread_env.exit {
+                cmds.push(cmd.clone());
+            }
+        }
+
         info!("start executing test case {}.", self.name);
         let mut all_success = true;
-        for cmd in self.cmds.clone() {
+        for cmd in cmds {
             match cmd.run() {
                 Ok(v) => {
                     if !v {
@@ -421,7 +450,7 @@ mod test {
                     break_if_fail: None,
                 },
             ],
-            ref_inputs: vec![],
+            ..Default::default()
         };
         let processed = test.process_input_group();
         assert_eq!(processed.len(), 2);
@@ -521,7 +550,7 @@ mod test {
                 should_panic: None,
                 break_if_fail: None,
             }],
-            ref_inputs: vec![],
+            ..Default::default()
         };
 
         let processed = test.process_input_group();
@@ -560,7 +589,7 @@ mod test {
                 should_panic: None,
                 break_if_fail: None,
             }],
-            ref_inputs: vec![],
+            ..Default::default()
         };
 
         let processed = test.process_input_group();
@@ -590,9 +619,10 @@ mod test {
             ],
             inputs: vec![InputGroup {
                 name: "test_input".to_string(),
-                args: [
-                    ("val".to_string(), ArgValue::List(vec!["100".to_string(), "200".to_string()])),
-                ]
+                args: [(
+                    "val".to_string(),
+                    ArgValue::List(vec!["100".to_string(), "200".to_string()]),
+                )]
                 .into(),
                 ..Default::default()
             }],

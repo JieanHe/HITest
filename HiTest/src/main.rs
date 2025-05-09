@@ -3,8 +3,10 @@ use std::fs;
 mod args;
 use args::RunArgs;
 use hitest::Config;
+use hitest::ThreadInfo;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ThreadInfo::get_instance();
     // parse command agrs
     let run_args = RunArgs::from_args();
 

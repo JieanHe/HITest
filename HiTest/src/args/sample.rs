@@ -37,6 +37,15 @@ pub fn prepare_sample_files() -> (String, String) {
     {
         #[cfg_attr(not(unix), allow(unused_mut))]
         let mut test_case: String = r#"concurrences = [{ tests = ["test_rw_u32", "Test_str_fill"], name = "group1" }]
+[thread_env]
+name = "thread_env"
+init = [ { opfunc = "Call_malloc", expect_eq = 0, args = ["len=0x1000", "mem_idx=50"] } ]
+exit = [ { opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=50"] } ]
+
+[process_env]
+name = "process_env"
+init = [ { opfunc = "Call_malloc", expect_eq = 0, args = ["len=0x1000", "mem_idx=55"] } ]
+exit = [ { opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=55"] } ]
 
 [[envs]]
 name = "memory_prepare"

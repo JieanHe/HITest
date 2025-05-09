@@ -169,6 +169,7 @@ impl LibParse {
 
     pub fn get_instance() -> Result<&'static RwLock<LibParse>, Box<dyn Error>> {
         unsafe {
+            #[cfg_attr(unix, allow(static_mut_refs))]
             LIB_PARSER_INSTANCE
                 .as_ref()
                 .ok_or("LibParse not initialized".into())

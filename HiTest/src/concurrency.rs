@@ -14,9 +14,12 @@ fn default_name() -> String {
 }
 
 impl ConcurrencyGroup {
-    pub fn run(&mut self, tests: &Vec<Test>) ->TestResult {
+    pub fn run(&self, tests: &Vec<Test>) -> TestResult {
         if self.tests.is_empty() {
-            return TestResult { total: 0, success: 0};
+            return TestResult {
+                total: 0,
+                success: 0,
+            };
         }
 
         let mut test_cases: Vec<Test> = Vec::new();
@@ -29,7 +32,10 @@ impl ConcurrencyGroup {
         }
 
         if test_cases.is_empty() {
-            return TestResult { total: 0, success: 0};
+            return TestResult {
+                total: 0,
+                success: 0,
+            };
         }
 
         debug!(
@@ -37,15 +43,12 @@ impl ConcurrencyGroup {
             self.name, self.tests
         );
 
-        let results: Vec<_> = test_cases
-        .into_par_iter()
-        .map(|test| test.run())
-        .collect();
+        let results: Vec<_> = test_cases.into_par_iter().map(|test| test.run()).collect();
 
         let total = results.iter().map(|r| r.total).sum();
         let success = results.iter().map(|r| r.success).sum();
 
-        if total == success  {
+        if total == success {
             info!(
                 "Parallel execute concurrency Group {} with {} thread, all passed!\n",
                 self.name, total
@@ -57,10 +60,7 @@ impl ConcurrencyGroup {
             );
         }
 
-        TestResult {
-            total,
-            success,
-        }
+        TestResult { total, success }
     }
 
     pub fn record_test(&self, tests: &mut Vec<String>) {
@@ -68,5 +68,4 @@ impl ConcurrencyGroup {
             tests.push(test.clone());
         }
     }
-
 }
