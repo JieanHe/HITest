@@ -31,6 +31,8 @@ pub struct Test {
     pub inputs: Vec<InputGroup>,
     #[serde(default)]
     pub ref_inputs: Vec<String>,
+    #[serde(default)]
+    pub serial: Option<bool>,
 }
 pub struct TestResult {
     pub success: usize,
@@ -283,6 +285,23 @@ impl Test {
         vec![current]
     }
 
+    fn execute(&self) -> bool {
+        if self.should_panic {
+            #[cfg(unix)]
+            {
+                let mut child_test = self.clone();
+                child_test.should_panic = false;
+                Test::check_panic(child_test)
+            }
+            #[cfg(not(unix))]
+            {
+                error!("panic check is not supported on this platform.");
+                false
+            }
+        } else {
+            self.run_one_thread()
+        }
+    }
     pub fn run(&self) -> TestResult {
         debug!("start executing test case {}.", self);
         let tests = self.process_input_group();
@@ -291,26 +310,12 @@ impl Test {
             .flat_map(|test| (0..self.thread_num).map(move |_| test.clone()))
             .collect();
 
-        let results: Vec<_> = tests
-            .into_par_iter()
-            .map(|test| {
-                if test.should_panic {
-                    #[cfg(unix)]
-                    {
-                        let mut child_test = test.clone();
-                        child_test.should_panic = false;
-                        Test::check_panic(child_test)
-                    }
-                    #[cfg(not(unix))]
-                    {
-                        error!("panic check is not supported on this platform.");
-                        false
-                    }
-                } else {
-                    test.run_one_thread()
-                }
-            })
-            .collect();
+        let serial = self.serial.unwrap_or(false);
+        let results: Vec<_> = if serial {
+            tests.into_iter().map(|test| test.execute()).collect()
+        } else {
+            tests.into_par_iter().map(|test| test.execute()).collect()
+        };
 
         let total_count = results.len();
         let success_count = results.iter().filter(|&&x| x).count();

@@ -41,7 +41,7 @@ pub fn prepare_sample_files() -> (String, String) {
 name = "thread_env"
 init = [ { opfunc = "Call_malloc", expect_eq = 0, args = ["len=0x1000", "mem_idx=50"] } ]
 exit = [ { opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=50"] } ]
-
+default_serial = false
 [process_env]
 name = "process_env"
 init = [ { opfunc = "Call_malloc", expect_eq = 0, args = ["len=0x1000", "mem_idx=55"] } ]
@@ -85,6 +85,7 @@ rw_common = [
 [[tests]]
 name = "test_rw_u32"
 thread_num = 2
+serial = true
 cmds = [
     { opfunc = "Call_write32", expect_eq = 0, args = [
         "addr_idx=0",

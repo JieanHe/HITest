@@ -18,6 +18,11 @@ pub struct Config {
     #[serde(default)]
     shared_inputs: HashMap<String, Vec<InputGroup>>,
     tests: Vec<Test>,
+    #[serde(default = "default_false")]
+    default_serial: bool,
+}
+fn default_false() -> bool {
+    false
 }
 
 impl Config {
@@ -127,6 +132,12 @@ impl Config {
         let tests = tests
             .into_iter()
             .filter(|test| !concurrency_tests.contains(&test.name))
+            .map(|mut test| {
+                if test.serial.is_none() && self.default_serial && test.thread_num == 1 {
+                    test.serial = Some(true);
+                }
+                test
+            })
             .collect::<Vec<_>>();
 
         // run remaining test cases
