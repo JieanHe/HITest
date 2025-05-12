@@ -17,9 +17,11 @@ pub struct InputGroup {
     pub should_panic: Option<bool>,
     #[serde(default)]
     pub break_if_fail: Option<bool>,
+    #[serde(default)]
+    pub refs: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(untagged)]
 pub enum ArgValue {
     Single(String),
@@ -27,7 +29,7 @@ pub enum ArgValue {
     Range(RangeExpr),
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 pub struct RangeExpr {
     pub start: i32,
     pub end: i32,

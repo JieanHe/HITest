@@ -39,13 +39,23 @@ pub fn prepare_sample_files() -> (String, String) {
         let mut test_case: String = r#"concurrences = [{ tests = ["test_rw_u32", "Test_str_fill"], name = "group1" }]
 [thread_env]
 name = "thread_env"
-init = [ { opfunc = "Call_malloc", expect_eq = 0, args = ["len=0x1000", "mem_idx=50"] } ]
-exit = [ { opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=50"] } ]
+init = [
+    { opfunc = "Call_malloc", expect_eq = 0, args = [
+        "len=0x1000",
+        "mem_idx=50",
+    ] },
+]
+exit = [{ opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=50"] }]
 default_serial = false
 [process_env]
 name = "process_env"
-init = [ { opfunc = "Call_malloc", expect_eq = 0, args = ["len=0x1000", "mem_idx=55"] } ]
-exit = [ { opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=55"] } ]
+init = [
+    { opfunc = "Call_malloc", expect_eq = 0, args = [
+        "len=0x1000",
+        "mem_idx=55",
+    ] },
+]
+exit = [{ opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=55"] }]
 
 [[envs]]
 name = "memory_prepare"
@@ -70,17 +80,11 @@ exit = [
 tests = ["test_rw_u32", "test_rw_u64", "Test_str_fill"]
 
 [shared_inputs]
-common1 = [
-    { name = "ipt1", args = {  write_val = "888", off = "0x0" } },
-    { name = "ipt2", args = {  write_val = "999", off = ["0x10", "0x20", "0x30"] } },
-    { name = "ipt2", args = {  write_val = "999", off = { start = 0x10, end = 0x50, step = 5 } } },
-]
-common2 = [
-    { name = "ipt3", args = {  write_val = "555", off = "0x100" } }
-]
-rw_common = [
-    { name = "ipt4", args = { write_val1 = "888", write_val2 = "999" } }
-]
+common1 = { write_val = "888", off = "0x0" }
+common2 = { write_val = "555", off = "0x100" }
+rw_common = { write_val1 = "888", write_val2 = "999" }
+ipt2 = { write_val = "999", off = ["0x10", "0x20", "0x30"] }
+ipt3 = { write_val = "999", off = { start = 0x10, end = 0x50, step = 5 } }
 
 [[tests]]
 name = "test_rw_u32"
@@ -98,8 +102,16 @@ cmds = [
     ] },
 
 ]
-inputs = [ { name = "ipt4", args = { alloc_size = "0x1000", write_val = "888", off = ["0xffc", "0x100", "0x330", "0x555"] } }]
-ref_inputs = ["common1", "common2"]
+inputs = [
+    { name = "ipt4", args = { alloc_size = "0x1000", off = [
+        "0xffc",
+        "0x100",
+        "0x330",
+        "0x555",
+    ] }, refs = [
+        "common1",
+    ] },
+]
 
 [[tests]]
 name = "test_rw_u64"
@@ -115,8 +127,17 @@ cmds = [
         "off=$off",
     ] },
 ]
-inputs = [ { name = "ipt4", should_panic = false, args = { write_val = "888", off = ["0x400", "0x800", "0xc00", "0xffc"] } }]
-ref_inputs = ["common1"]
+inputs = [
+    { name = "ipt4", should_panic = false, args = { write_val = "888", off = [
+        "0x400",
+        "0x800",
+        "0xc00",
+        "0xffc",
+    ] }, refs = [
+        "common1",
+    ] },
+]
+
 
 [[tests]]
 name = "Test_str_fill"
@@ -159,7 +180,14 @@ cmds = [
         "str2=2",
     ] },
 ]
-inputs = [{ args = { second_len = "!7" } }, { args = { second_len = ["10", "!15", "!18"] } }]
+inputs = [
+    { args = { second_len = "!7" } },
+    { args = { second_len = [
+        "10",
+        "!15",
+        "!18",
+    ] } },
+]
 
 "#
         .to_string();

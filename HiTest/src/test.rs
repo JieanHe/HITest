@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::fmt;
 #[cfg(unix)]
 use std::process::exit;
+use thiserror::Error;
 
 fn default_true() -> bool {
     true
@@ -30,13 +31,20 @@ pub struct Test {
     #[serde(default)]
     pub inputs: Vec<InputGroup>,
     #[serde(default)]
-    pub ref_inputs: Vec<String>,
-    #[serde(default)]
     pub serial: Option<bool>,
 }
 pub struct TestResult {
     pub success: usize,
     pub total: usize,
+}
+
+#[derive(Debug, Error)]
+pub enum TestError {
+    #[error("Duplicate argument '{0}' from shared input refs")]
+    DuplicateArg(String),
+
+    #[error("Shared input group '{0}' not found")]
+    SharedInputNotFound(String),
 }
 
 impl Test {
@@ -236,7 +244,6 @@ impl Test {
                         }
                     })
                     .collect();
-
                 test
             })
             .collect()
@@ -303,7 +310,10 @@ impl Test {
         }
     }
     pub fn run(&self) -> TestResult {
-        debug!("start executing test case {}.", self);
+        debug!(
+            "start executing test case {}, inputs: {:?}.",
+            &self.name, &self.inputs
+        );
         let tests = self.process_input_group();
         let tests: Vec<_> = tests
             .into_iter()
@@ -343,24 +353,51 @@ impl Test {
         self.cmds.insert(0, cmd);
     }
 
-    pub fn merge_shared_inputs(&mut self, shared_inputs: &HashMap<String, Vec<InputGroup>>) {
-        let mut merged = Vec::new();
+ pub fn resolve_refs(
+        &mut self,
+        shared_inputs: &HashMap<String, HashMap<String, ArgValue>>,
+    ) -> Result<(), TestError> {
+        for input in &mut self.inputs {
+            let mut all_vars = HashMap::new();
+            let mut seen_keys = HashMap::new();
+            for ref_name in &input.refs {
+                if let Some(ref_group) = shared_inputs.get(ref_name) {
+                    for (k, v) in ref_group {
+                        if let Some(prev_ref) = seen_keys.insert(k.clone(), ref_name) {
+                            return Err(TestError::DuplicateArg(format!(
+                                "Parameter '{}' is duplicated in shared_inputs '{}' and '{}'",
+                                k, prev_ref, ref_name
+                            )));
+                        }
+                        all_vars.insert(k.clone(), v.clone());
+                    }
+                } else {
+                    return Err(TestError::SharedInputNotFound(ref_name.clone()));
+                }
+            }
 
-        for ref_name in &self.ref_inputs {
-            if let Some(groups) = shared_inputs.get(ref_name) {
-                merged.extend(groups.clone());
-            } else {
-                error!("Shared input group {} not found!", ref_name);
+            for ref_name in &input.refs {
+                if let Some(ref_group) = shared_inputs.get(ref_name) {
+                    for (k, v) in ref_group {
+                        if !input.args.contains_key(k) {
+                            input.args.insert(k.clone(), v.clone());
+                        }
+                    }
+                }
+            }
+
+            for (_, v) in & mut input.args {
+                match v {
+                    ArgValue::Single(s) => {
+                        if s.contains("$") {
+                            *v = all_vars.get(&s[1..]).unwrap().clone();
+                        }
+                    },
+                    _=> continue,
+                }
             }
         }
-
-        merged.extend(self.inputs.drain(..));
-        debug!(
-            "Merging {} local input groups, total {} group now",
-            self.inputs.len(),
-            merged.len()
-        );
-        self.inputs = merged;
+        Ok(())
     }
 }
 
@@ -442,8 +479,7 @@ mod test {
                         .iter()
                         .cloned()
                         .collect(),
-                    should_panic: None,
-                    break_if_fail: None,
+                ..Default::default()
                 },
                 InputGroup {
                     name: "test_input1".to_string(),
@@ -451,8 +487,7 @@ mod test {
                         .iter()
                         .cloned()
                         .collect(),
-                    should_panic: None,
-                    break_if_fail: None,
+                ..Default::default()
                 },
             ],
             ..Default::default()
@@ -461,73 +496,6 @@ mod test {
         assert_eq!(processed.len(), 2);
         assert_eq!(processed[0].name, "input_test_test_input0");
         assert_eq!(processed[1].name, "input_test_test_input1");
-    }
-
-    #[test]
-    fn test_shared_inputs_merge() {
-        let mut shared_inputs = HashMap::new();
-        shared_inputs.insert(
-            "common".to_string(),
-            vec![InputGroup {
-                name: "shared1".to_string(),
-                args: [("val".to_string(), ArgValue::Single("100".to_string()))].into(),
-                ..Default::default()
-            }],
-        );
-
-        let test = Test {
-            name: "test1".to_string(),
-            ref_inputs: vec!["common".to_string()],
-            inputs: vec![InputGroup {
-                name: "local1".to_string(),
-                args: [("val2".to_string(), ArgValue::Single("200".to_string()))].into(),
-                ..Default::default()
-            }],
-            ..Default::default()
-        };
-
-        let mut test = test.clone();
-        test.merge_shared_inputs(&shared_inputs);
-        let processed = test.process_input_group();
-
-        assert_eq!(processed.len(), 2);
-        assert_eq!(processed[0].name, "test1_shared1");
-        assert_eq!(processed[1].name, "test1_local1");
-    }
-
-    #[test]
-    fn test_multiple_shared_inputs() {
-        let mut shared_inputs = HashMap::new();
-        shared_inputs.insert(
-            "group1".to_string(),
-            vec![InputGroup {
-                name: "g1_input1".to_string(),
-                args: [("size".to_string(), ArgValue::Single("100".to_string()))].into(),
-                ..Default::default()
-            }],
-        );
-        shared_inputs.insert(
-            "group2".to_string(),
-            vec![InputGroup {
-                name: "g2_input1".to_string(),
-                args: [("count".to_string(), ArgValue::Single("50".to_string()))].into(),
-                ..Default::default()
-            }],
-        );
-
-        let test = Test {
-            name: "multi_test".to_string(),
-            ref_inputs: vec!["group1".to_string(), "group2".to_string()],
-            ..Default::default()
-        };
-
-        let mut test = test.clone();
-        test.merge_shared_inputs(&shared_inputs);
-        let processed = test.process_input_group();
-
-        assert_eq!(processed.len(), 2);
-        assert!(processed.iter().any(|t| t.name == "multi_test_g1_input1"));
-        assert!(processed.iter().any(|t| t.name == "multi_test_g2_input1"));
     }
 
     #[test]
@@ -552,8 +520,7 @@ mod test {
                 .iter()
                 .cloned()
                 .collect(),
-                should_panic: None,
-                break_if_fail: None,
+                ..Default::default()
             }],
             ..Default::default()
         };
@@ -591,8 +558,7 @@ mod test {
                 .iter()
                 .cloned()
                 .collect(),
-                should_panic: None,
-                break_if_fail: None,
+                ..Default::default()
             }],
             ..Default::default()
         };
@@ -636,5 +602,71 @@ mod test {
 
         let processed = test.process_input_group();
         assert_eq!(processed.len(), 2);
+        assert_eq!(processed[0].name, "multi_test_test_input_0");
+        assert_eq!(processed[1].name, "multi_test_test_input_1");
+    }
+    #[test]
+    fn test_resolve_refs() {
+        let mut shared_inputs = HashMap::new();
+        shared_inputs.insert(
+            "group1".to_string(),
+            [("size".to_string(), ArgValue::Single("100".to_string()))]
+                .iter()
+                .cloned()
+                .collect(),
+        );
+
+        let mut test = Test {
+            inputs: vec![InputGroup {
+                refs: vec!["group1".to_string()],
+                args: [("val".to_string(), ArgValue::Single("$size".to_string()))]
+                    .iter()
+                    .cloned()
+                    .collect(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        test.resolve_refs(&shared_inputs).unwrap();
+        assert_eq!(test.inputs[0].args.len(), 2);
+        assert_eq!(
+            test.inputs[0].args.get("size").unwrap(),
+            &ArgValue::Single("100".to_string())
+        );
+        assert_eq!(
+            test.inputs[0].args.get("val").unwrap(),
+            &ArgValue::Single("100".to_string())
+        );
+    }
+    #[test]
+    fn test_resolve_refs_conflict() {
+        let mut shared_inputs = HashMap::new();
+        shared_inputs.insert(
+            "group1".to_string(),
+            [("size".to_string(), ArgValue::Single("100".to_string()))]
+                .iter()
+                .cloned()
+                .collect(),
+        );
+        shared_inputs.insert(
+            "group2".to_string(),
+            [("size".to_string(), ArgValue::Single("200".to_string()))]
+                .iter()
+                .cloned()
+                .collect(),
+        );
+
+        let mut test = Test {
+            inputs: vec![InputGroup {
+                refs: vec!["group1".to_string(), "group2".to_string()],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let result = test.resolve_refs(&shared_inputs);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), TestError::DuplicateArg(_)));
     }
 }

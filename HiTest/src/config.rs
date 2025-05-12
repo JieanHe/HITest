@@ -1,4 +1,6 @@
-use super::{ConcurrencyGroup, Env, InputGroup, ResourceEnv, Test};
+use crate::input::ArgValue;
+
+use super::{ConcurrencyGroup, Env, ResourceEnv, Test};
 use log::{debug, info};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -16,7 +18,7 @@ pub struct Config {
     #[serde(default)]
     process_env: Option<Env>,
     #[serde(default)]
-    shared_inputs: HashMap<String, Vec<InputGroup>>,
+    shared_inputs: HashMap<String, HashMap<String, ArgValue>>,
     tests: Vec<Test>,
     #[serde(default = "default_false")]
     default_serial: bool,
@@ -111,7 +113,7 @@ impl Config {
         let tests = tests
             .into_iter()
             .map(|mut test| {
-                test.merge_shared_inputs(&shared_inputs);
+                test.resolve_refs(&shared_inputs).unwrap();
                 test
             })
             .collect::<Vec<_>>();

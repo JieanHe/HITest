@@ -13,3 +13,4 @@ rayon = "1.5"
 libparser = { path = "../libparser" }
 nix = "0.24"
 termcolor = "1.1"
+thiserror = "2.0"
