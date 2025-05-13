@@ -10,6 +10,7 @@ pub struct RunArgs {
     pub libs_cfg: String,
     pub debug_test: Option<String>,
     pub serial: bool,
+    pub max_threads: Option<usize>,
 }
 
 impl RunArgs {
@@ -41,6 +42,11 @@ fn parse_command_line(matches: &ArgMatches) -> RunArgs {
     } else {
         None
     };
+    let max_threads: Option<usize> = if matches.is_present("max-threads") {
+        Some(matches.value_of("max-threads").unwrap().parse().unwrap())
+    } else {
+        None
+    };
 
     let mut log_lvl: &str = matches.value_of("log").unwrap_or("info");
     if (log_lvl == "1") || (log_lvl == "error") {
@@ -59,6 +65,7 @@ fn parse_command_line(matches: &ArgMatches) -> RunArgs {
         libs_cfg: libs_path,
         debug_test,
         serial: matches.is_present("serial"),
+        max_threads,
     }
 }
 
@@ -96,7 +103,7 @@ fn init_command_line() -> ArgMatches {
             .takes_value(true)
             .required(false),
     )
-        .arg(
+    .arg(
         Arg::with_name("debug")
             .short('d')
             .long("debug")
@@ -105,12 +112,24 @@ fn init_command_line() -> ArgMatches {
             .takes_value(true)
             .required(false),
     )
-        .arg(
+    .arg(
         Arg::with_name("serial")
             .long("serial")
             .value_name("default run in serial mode")
             .help("run test cases in serial mode, default is parallel mode. this not effected the test cases in concurrent mode and the thread_num > 1 cases")
             .takes_value(false)
+            .required(false),
+    )
+    .arg(
+        Arg::with_name("max-threads")
+            .short('m')
+            .long("max-thread")
+            .value_name("one parallel group max threads")
+            .help(r"set the max threads of one parallel group,
+            when tests can be parallel execute but number bigger than max-thread,
+            those tests will be grouped in multiple parallel groups and  the groups
+            will be execute one after one.")
+            .takes_value(true)
             .required(false),
     )
     .arg(

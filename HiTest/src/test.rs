@@ -1,7 +1,9 @@
 use super::{ArgValue, Cmd, Condition, InputGroup, ResourceEnv, ThreadInfo};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 #[cfg(unix)]
 use nix::{sys::wait::waitpid, sys::wait::WaitStatus, unistd::fork, unistd::ForkResult};
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -324,7 +326,29 @@ impl Test {
         let results: Vec<_> = if serial {
             tests.into_iter().map(|test| test.execute()).collect()
         } else {
-            tests.into_par_iter().map(|test| test.execute()).collect()
+            let max_thread = {
+                let res_env = ResourceEnv::get_instance().lock().unwrap();
+                res_env.max_threads
+            };
+            let results: Vec<_> = if let Some(max_thread) = max_thread {
+                warn!("test case {} total sub test cases is {}, but max-threads is {} thread, will be grouped.",
+                self.name, tests.len(), max_thread);
+
+                let mut rng = thread_rng();
+                let mut shuffled_tests = tests;
+                shuffled_tests.shuffle(&mut rng);
+
+                let mut results = Vec::new();
+                for chunk in shuffled_tests.chunks(max_thread) {
+                    let chunk_results: Vec<_> =
+                        chunk.into_par_iter().map(|test| test.execute()).collect();
+                    results.extend(chunk_results);
+                }
+                results
+            } else {
+                tests.into_par_iter().map(|test| test.execute()).collect()
+            };
+            results
         };
 
         let total_count = results.len();
@@ -353,7 +377,7 @@ impl Test {
         self.cmds.insert(0, cmd);
     }
 
- pub fn resolve_refs(
+    pub fn resolve_refs(
         &mut self,
         shared_inputs: &HashMap<String, HashMap<String, ArgValue>>,
     ) -> Result<(), TestError> {
@@ -386,14 +410,14 @@ impl Test {
                 }
             }
 
-            for (_, v) in & mut input.args {
+            for (_, v) in &mut input.args {
                 match v {
                     ArgValue::Single(s) => {
                         if s.contains("$") {
                             *v = all_vars.get(&s[1..]).unwrap().clone();
                         }
-                    },
-                    _=> continue,
+                    }
+                    _ => continue,
                 }
             }
         }
@@ -479,7 +503,7 @@ mod test {
                         .iter()
                         .cloned()
                         .collect(),
-                ..Default::default()
+                    ..Default::default()
                 },
                 InputGroup {
                     name: "test_input1".to_string(),
@@ -487,7 +511,7 @@ mod test {
                         .iter()
                         .cloned()
                         .collect(),
-                ..Default::default()
+                    ..Default::default()
                 },
             ],
             ..Default::default()

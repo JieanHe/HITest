@@ -89,7 +89,7 @@ impl Config {
         tests
     }
 
-    pub fn run(self) {
+    pub fn run(self, max_threads: Option<usize>) {
         if self.tests.is_empty() {
             info!("no test cases be find, do nothing!");
             return;
@@ -106,7 +106,7 @@ impl Config {
         if let Some(ref thread_env) = self.thread_env {
             thread_env.apply_env_init();
         }
-        ResourceEnv::init(self.thread_env.clone(), self.process_env.clone());
+        ResourceEnv::init(self.thread_env.clone(), self.process_env.clone(), max_threads);
         // apply envs for test cases
         let tests = self.apply_envs();
         // merge shared inputs
@@ -123,7 +123,7 @@ impl Config {
         let mut success_tests = 0;
         tests = if let Some(ref debug_test) = self.debug_test {
             info!("Starting debug test: {}", debug_test);
-            let tests= tests
+            let tests = tests
                 .iter()
                 .filter(|test| test.name.contains(debug_test))
                 .map(|test| test.clone())

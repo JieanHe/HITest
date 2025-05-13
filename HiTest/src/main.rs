@@ -60,6 +60,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if !config.default_serial {
         config.default_serial = run_args.serial;
     }
-    config.run();
+    config.run(run_args.max_threads);
     Ok(())
 }

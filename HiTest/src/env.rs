@@ -39,6 +39,7 @@ impl Env {
 pub struct ResourceEnv {
     pub thread_env: Option<Env>,
     pub process_env: Option<Env>,
+    pub max_threads: Option<usize>,
 }
 static mut INSTANCE: Option<Mutex<ResourceEnv>> = None;
 static INIT: Once = Once::new();
@@ -46,14 +47,17 @@ static INIT: Once = Once::new();
 impl ResourceEnv {
     pub fn get_instance() -> &'static Mutex<ResourceEnv> {
         #[cfg_attr(unix, allow(static_mut_refs))]
-        unsafe { INSTANCE.as_ref().unwrap() }
+        unsafe {
+            INSTANCE.as_ref().unwrap()
+        }
     }
 
-    pub fn init(thread_env: Option<Env>, process_env: Option<Env>) {
+    pub fn init(thread_env: Option<Env>, process_env: Option<Env>, max_threads: Option<usize>) {
         INIT.call_once(|| unsafe {
             INSTANCE = Some(Mutex::new(ResourceEnv {
                 thread_env,
                 process_env,
+                max_threads,
             }));
         });
     }

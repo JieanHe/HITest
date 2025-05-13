@@ -432,7 +432,7 @@ inputs = [ { name = "ipt4", args = { alloc_size = "0x1000", write_val = $val, of
 
 ```
 于是可以在shared_inputs定义好常用的输入模式，然后在tests中通过refs参数引用这些输入模式，这样可以减少重复的输入参数。
-
+当输入参数是列表时，会自动扩展出子测试用例，默认这些子测试用例是多线程并发运行的， 如果需要单线程运行，可以在指明test.serial=true.
 ### 调试测试用例
 支持调试测试用例，这种模式下只运行指定的一个用例以及其参数列派生的子用例。使用方法有两种。
 - 在配置文件顶层通过 `debug_test="$test_name"` 来调试指定测试用例，这样只会运行这个用例。如：
@@ -466,9 +466,10 @@ hitest -s -d test_rw_u32
 - -s<--sample>         运行libmalloc的例子
 - -i, <--lib>          指定库文件的配置文件
 - -t, <--test>         指定用例的配置文件
-- -d, <--debug>     指定调试的测试用例名称
-- -l [LEVEL]        设置日志级别（error，warn, info, debug, 或 1 2 3 4 默认为info(3)）
-
+- -d, <--debug>        指定调试的测试用例名称
+- -l [LEVEL]           设置日志级别（error，warn, info, debug, 或 1 2 3 4 默认为info(3)）
+- --serial             一个测试用例若是没有显式指明支持并发（在concurrences里面或者thread_num>1）, 则它的多组参数串行执行
+- -m, <--max-thread>   指定最大并发线程数，当需要并发的测试用例超过这个值时，会按这个值分组并发。
 注意：
 - 当使用`-s(--sample)`参数时，会在cfgs目录自动生成dependlibs.toml和tc_libmalloc.toml作为库文件配置和用例配置。
 - 当没有指定-s参数时， -i 和 -t 时必填参数。
