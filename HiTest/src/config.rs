@@ -1,7 +1,7 @@
 use crate::input::ArgValue;
 
 use super::{ConcurrencyGroup, Env, ResourceEnv, Test};
-use log::{debug, info};
+use log::{debug, info, warn};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::io::Write;
@@ -21,7 +21,9 @@ pub struct Config {
     shared_inputs: HashMap<String, HashMap<String, ArgValue>>,
     tests: Vec<Test>,
     #[serde(default = "default_false")]
-    default_serial: bool,
+    pub default_serial: bool,
+    #[serde(default)]
+    pub debug_test: Option<String>,
 }
 fn default_false() -> bool {
     false
@@ -96,8 +98,7 @@ impl Config {
             info!("validate config failed: {}", e);
             return;
         }
-        let mut total_tests = 0;
-        let mut success_tests = 0;
+
         // apply env init
         if let Some(ref process_env) = self.process_env {
             process_env.apply_env_init();
@@ -110,7 +111,7 @@ impl Config {
         let tests = self.apply_envs();
         // merge shared inputs
         let shared_inputs = self.shared_inputs.clone();
-        let tests = tests
+        let mut tests = tests
             .into_iter()
             .map(|mut test| {
                 test.resolve_refs(&shared_inputs).unwrap();
@@ -118,29 +119,48 @@ impl Config {
             })
             .collect::<Vec<_>>();
 
-        // run concurrency group
-        let mut concurrency_tests: Vec<String> = Vec::new();
-        if let Some(ref concurrences) = self.concurrences {
-            info!("Starting run concurrency groups!");
-            for concurrency in concurrences {
-                let res = concurrency.run(&tests);
-                total_tests += res.total;
-                success_tests += res.success;
-                concurrency.record_test(&mut concurrency_tests);
+        let mut total_tests = 0;
+        let mut success_tests = 0;
+        tests = if let Some(ref debug_test) = self.debug_test {
+            info!("Starting debug test: {}", debug_test);
+            let tests= tests
+                .iter()
+                .filter(|test| test.name.contains(debug_test))
+                .map(|test| test.clone())
+                .collect::<Vec<_>>();
+            if tests.is_empty() {
+                warn!("Debug test: {} not found!", debug_test);
             }
-        }
-
-        // filter out concurrency test cases
-        let tests = tests
-            .into_iter()
-            .filter(|test| !concurrency_tests.contains(&test.name))
-            .map(|mut test| {
-                if test.serial.is_none() && self.default_serial && test.thread_num == 1 {
-                    test.serial = Some(true);
+            tests
+        } else {
+            // run concurrency group
+            let mut concurrency_tests: Vec<String> = Vec::new();
+            if let Some(ref concurrences) = self.concurrences {
+                info!("Starting run concurrency groups!");
+                for concurrency in concurrences {
+                    let res = concurrency.run(&tests);
+                    total_tests += res.total;
+                    success_tests += res.success;
+                    concurrency.record_test(&mut concurrency_tests);
                 }
-                test
-            })
-            .collect::<Vec<_>>();
+            }
+
+            // filter out concurrency test cases
+            tests
+                .into_iter()
+                .filter(|test| !concurrency_tests.contains(&test.name))
+                .map(|mut test| {
+                    if test.serial.is_none() && self.default_serial && test.thread_num == 1 {
+                        warn!(
+                            "Test case {} marked as serial because of default_serial is set",
+                            test.name
+                        );
+                        test.serial = Some(true);
+                    }
+                    test
+                })
+                .collect::<Vec<_>>()
+        };
 
         // run remaining test cases
         for test in tests {

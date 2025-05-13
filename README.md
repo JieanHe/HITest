@@ -189,7 +189,7 @@ funcs = [
 python generate_config.py -f src_file.c -o output_name.toml -l library_name
 ```
 
-注意： 测试用例需要严格按照参数列表的参数名字提供调用函数的参数。 可以运行 `hitest --sample` 之后，在cfgs目录下查看tc_libmalloc.toml的内容, 这个文件是一个简单的测试用例。
+注意： 测试用例需要严格按照参数列表的参数名字提供调用函数的参数。 可以运行 `hitest -s(--sample)` 之后，在cfgs目录下查看tc_libmalloc.toml的内容, 这个文件是一个简单的测试用例。
 
 ## 测试用例编写
 
@@ -402,19 +402,16 @@ exit = { opfunc = "Call_free", expect_eq = 0, args=["mem_idx=52"] }
 
 ```
 
-### 复用输入参数组
+### 复用输入参数
 
-InputGroup也支持复用， 使用方法是在配置文件顶层新增`shared_inputs`字段，这是个哈希表，每一个key对应一个InputGroup列表。然后再需要使用这个输入组的用例内，通过ref_inputs参数引用这个key即可。如：
+InputGroup也支持复用， 使用方法是在配置文件顶层新增`shared_inputs`字段，这是个哈希表，每一个key对应一个HashMap<String, ArgValue>。然后在需要使用这个输入组的inputs，通过refs参数引用这个key即可。如：
 
 ```toml
 [shared_inputs]
-common1 = [
-    { name = "ipt1", args = {  write_val = "888", off = "0x0" } },
-    { name = "ipt2", args = {  write_val = "999", off = "0x10" } },
-]
-common2 = [
-    { name = "ipt3", args = {  write_val = "555", off = "0x100" } }
-]
+w888 = {  val = "888",}
+w0-10= {val = {start=0, end=10, step=1}
+w3_4_5 = { val = ["3", "4", "5"],}
+off10step = { off_ref = {start=10, end=100, step=10}}
 
 [[tests]]
 name = "test_rw_u32"
@@ -431,11 +428,32 @@ cmds = [
     ] },
 
 ]
-inputs = [ { name = "ipt4", args = { alloc_size = "0x1000", write_val = "888", off = "0xffc" } }]
-ref_inputs = ["common1", "common2"]
-```
+inputs = [ { name = "ipt4", args = { alloc_size = "0x1000", write_val = $val, off = $off_ref }, refs=["w888"], "off10step" }]
 
-这个用例会依次想addr_idx=0代表的内存偏移0处写入888并都会，向偏移0x10处写入999并读回，向偏移0x100处写入555并都会，向偏移0xffc处写入888并读回来。
+```
+于是可以在shared_inputs定义好常用的输入模式，然后在tests中通过refs参数引用这些输入模式，这样可以减少重复的输入参数。
+
+### 调试测试用例
+支持调试测试用例，这种模式下只运行指定的一个用例以及其参数列派生的子用例。使用方法有两种。
+- 在配置文件顶层通过 `debug_test="$test_name"` 来调试指定测试用例，这样只会运行这个用例。如：
+```toml
+debug_test = "test_rw_u32"
+[[tests]]
+name = "test_rw_u32"
+thread_num = 1
+cmds = [
+    { opfunc = "Call_malloc", expect_eq = 0, args = [
+        "len=100",
+        "mem_idx=1",
+    ] },
+]
+- 在命令行参数中通过 `-d(或--debug) $test_name` 来调试指定测试用例，这样只会运行这个用例。
+
+```bash
+hitest -s -d test_rw_u32
+```
+## other test cases
+```
 
 
 ## 使用说明
@@ -445,11 +463,16 @@ ref_inputs = ["common1", "common2"]
 命令行参数：
 
 - -h<--help>           显示帮助信息
-- --sample             运行libmalloc的例子
+- -s<--sample>         运行libmalloc的例子
 - -i, <--lib>          指定库文件的配置文件
 - -t, <--test>         指定用例的配置文件
+- -d, <--debug>     指定调试的测试用例名称
 - -l [LEVEL]        设置日志级别（error，warn, info, debug, 或 1 2 3 4 默认为info(3)）
 
+注意：
+- 当使用`-s(--sample)`参数时，会在cfgs目录自动生成dependlibs.toml和tc_libmalloc.toml作为库文件配置和用例配置。
+- 当没有指定-s参数时， -i 和 -t 时必填参数。
+- 当-t参数指定了debug_test时，命令行的 -d参数不生效。
 ## 参与贡献
 
 1. Fork 本仓库

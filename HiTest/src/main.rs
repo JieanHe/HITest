@@ -1,4 +1,5 @@
 use libparser::*;
+use log::warn;
 use std::fs;
 mod args;
 use args::RunArgs;
@@ -33,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ));
 
     // loading test cases
-    let config: Config = match toml::from_str(&config_content) {
+    let mut config: Config = match toml::from_str(&config_content) {
         Ok(t) => t,
         Err(e) => {
             return Err(format!(
@@ -45,6 +46,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // run test cases
+
+    if config.debug_test.is_none() {
+        if let Some(name) = run_args.debug_test {
+            warn!(
+                "debug test is set as {}, will run this test case only",
+                &name
+            );
+            config.debug_test = Some(name);
+        }
+    }
+
+    if !config.default_serial {
+        config.default_serial = run_args.serial;
+    }
     config.run();
     Ok(())
 }

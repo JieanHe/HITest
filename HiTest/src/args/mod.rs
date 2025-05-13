@@ -8,6 +8,8 @@ pub struct RunArgs {
     pub test_cfg: String,
     pub log_lvl: String,
     pub libs_cfg: String,
+    pub debug_test: Option<String>,
+    pub serial: bool,
 }
 
 impl RunArgs {
@@ -34,6 +36,11 @@ fn parse_command_line(matches: &ArgMatches) -> RunArgs {
             .expect("failed to get test cases config path")
             .to_string();
     }
+    let debug_test = if matches.is_present("debug") {
+        Some(matches.value_of("debug").unwrap().to_string())
+    } else {
+        None
+    };
 
     let mut log_lvl: &str = matches.value_of("log").unwrap_or("info");
     if (log_lvl == "1") || (log_lvl == "error") {
@@ -45,10 +52,13 @@ fn parse_command_line(matches: &ArgMatches) -> RunArgs {
     } else {
         log_lvl = "info";
     }
+
     RunArgs {
         test_cfg: test_path,
         log_lvl: log_lvl.to_string(),
         libs_cfg: libs_path,
+        debug_test,
+        serial: matches.is_present("serial"),
     }
 }
 
@@ -86,8 +96,26 @@ fn init_command_line() -> ArgMatches {
             .takes_value(true)
             .required(false),
     )
+        .arg(
+        Arg::with_name("debug")
+            .short('d')
+            .long("debug")
+            .value_name("debug test case")
+            .help("only run this test case")
+            .takes_value(true)
+            .required(false),
+    )
+        .arg(
+        Arg::with_name("serial")
+            .long("serial")
+            .value_name("default run in serial mode")
+            .help("run test cases in serial mode, default is parallel mode. this not effected the test cases in concurrent mode and the thread_num > 1 cases")
+            .takes_value(false)
+            .required(false),
+    )
     .arg(
         Arg::with_name("sample")
+        .short('s')
             .long("sample")
             .value_name("sample mode")
             .help("run as sample mode, to see the format of config files")

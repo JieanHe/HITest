@@ -46,7 +46,6 @@ init = [
     ] },
 ]
 exit = [{ opfunc = "Call_free", expect_eq = 0, args = ["mem_idx=50"] }]
-default_serial = false
 [process_env]
 name = "process_env"
 init = [
@@ -115,7 +114,7 @@ inputs = [
 
 [[tests]]
 name = "test_rw_u64"
-thread_num = 2
+thread_num = 1
 cmds = [
     { opfunc = "Call_write64", expect_eq = 0, args = [
         "addr_idx=0",
