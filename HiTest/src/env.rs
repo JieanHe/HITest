@@ -1,7 +1,7 @@
 use super::Cmd;
 use log::warn;
 use serde::Deserialize;
-use std::sync::{Mutex, Once};
+use std::sync::{RwLock, Once};
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Env {
@@ -41,11 +41,11 @@ pub struct ResourceEnv {
     pub process_env: Option<Env>,
     pub max_threads: Option<usize>,
 }
-static mut INSTANCE: Option<Mutex<ResourceEnv>> = None;
+static mut INSTANCE: Option<RwLock<ResourceEnv>> = None;
 static INIT: Once = Once::new();
 
 impl ResourceEnv {
-    pub fn get_instance() -> &'static Mutex<ResourceEnv> {
+    pub fn get_instance() -> &'static RwLock<ResourceEnv> {
         #[cfg_attr(unix, allow(static_mut_refs))]
         unsafe {
             INSTANCE.as_ref().unwrap()
@@ -54,7 +54,7 @@ impl ResourceEnv {
 
     pub fn init(thread_env: Option<Env>, process_env: Option<Env>, max_threads: Option<usize>) {
         INIT.call_once(|| unsafe {
-            INSTANCE = Some(Mutex::new(ResourceEnv {
+            INSTANCE = Some(RwLock::new(ResourceEnv {
                 thread_env,
                 process_env,
                 max_threads,

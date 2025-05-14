@@ -58,7 +58,7 @@ impl Test {
         );
         match unsafe { fork() } {
             Ok(ForkResult::Child) => {
-                let res_env = ResourceEnv::get_instance().lock().unwrap();
+                let res_env = ResourceEnv::get_instance().read().unwrap();
                 if let Some(process_env) = &res_env.process_env {
                     process_env.apply_env_init();
                 }
@@ -128,14 +128,16 @@ impl Test {
         let is_main_thread = ThreadInfo::get_instance().lock().unwrap().is_main_thread();
 
         if !is_main_thread {
-            let res_env = ResourceEnv::get_instance().lock().unwrap();
-            let thread_env = res_env.thread_env.as_ref().unwrap();
-            info!("start executing test case {} with thread env.", self.name);
-            for cmd in thread_env.init.iter().rev() {
-                cmds.insert(0, cmd.clone());
-            }
-            for cmd in &thread_env.exit {
-                cmds.push(cmd.clone());
+            let res_env = ResourceEnv::get_instance().read().unwrap();
+            if res_env.thread_env.is_some() {
+                let thread_env = res_env.thread_env.as_ref().unwrap();
+                info!("start executing test case {} with thread env.", self.name);
+                for cmd in thread_env.init.iter().rev() {
+                    cmds.insert(0, cmd.clone());
+                }
+                for cmd in &thread_env.exit {
+                    cmds.push(cmd.clone());
+                }
             }
         }
 
@@ -324,27 +326,33 @@ impl Test {
 
         let serial = self.serial.unwrap_or(false);
         let results: Vec<_> = if serial {
+            info!("Run test {} with {} sub tests serially!", self.name, tests.len());
             tests.into_iter().map(|test| test.execute()).collect()
         } else {
+            info!("Run test {} with {} sub tests parallelly!", self.name, tests.len());
             let max_thread = {
-                let res_env = ResourceEnv::get_instance().lock().unwrap();
+                let res_env = ResourceEnv::get_instance().read().unwrap();
                 res_env.max_threads
             };
             let results: Vec<_> = if let Some(max_thread) = max_thread {
-                warn!("test case {} total sub test cases is {}, but max-threads is {} thread, will be grouped.",
-                self.name, tests.len(), max_thread);
+                if max_thread < tests.len() {
+                    warn!("test case {} total sub test cases is {}, but max-threads is {} thread, will be grouped.",
+                    self.name, tests.len(), max_thread);
 
-                let mut rng = thread_rng();
-                let mut shuffled_tests = tests;
-                shuffled_tests.shuffle(&mut rng);
+                    let mut rng = thread_rng();
+                    let mut shuffled_tests = tests;
+                    shuffled_tests.shuffle(&mut rng);
 
-                let mut results = Vec::new();
-                for chunk in shuffled_tests.chunks(max_thread) {
-                    let chunk_results: Vec<_> =
-                        chunk.into_par_iter().map(|test| test.execute()).collect();
-                    results.extend(chunk_results);
+                    let mut results = Vec::new();
+                    for chunk in shuffled_tests.chunks(max_thread) {
+                        let chunk_results: Vec<_> =
+                            chunk.into_par_iter().map(|test| test.execute()).collect();
+                        results.extend(chunk_results);
+                    }
+                    results
+                } else {
+                    tests.into_par_iter().map(|test| test.execute()).collect()
                 }
-                results
             } else {
                 tests.into_par_iter().map(|test| test.execute()).collect()
             };
@@ -414,7 +422,8 @@ impl Test {
                 match v {
                     ArgValue::Single(s) => {
                         if s.contains("$") {
-                            *v = all_vars.get(&s[1..]).unwrap().clone();
+                            let msg = format!("test {} lack value of {}", self.name, s);
+                            *v = all_vars.get(&s[1..]).expect(&msg).clone();
                         }
                     }
                     _ => continue,

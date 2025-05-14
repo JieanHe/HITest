@@ -45,23 +45,27 @@ impl ConcurrencyGroup {
             self.name, self.tests
         );
         let max_thread = {
-            let res_env = ResourceEnv::get_instance().lock().unwrap();
+            let res_env = ResourceEnv::get_instance().read().unwrap();
             res_env.max_threads
         };
-        let results: Vec<_> = if let Some(max_thread) = max_thread {
-            warn!("Concurrency Group {} total test cases is {}, but max-threads is {} thread, will be grouped.",
-            self.name, test_cases.len(), max_thread);
+        let results: Vec<_> = if let Some(max_thread) = max_thread{
+            if test_cases.len() > max_thread {
+                warn!("Concurrency Group {} total test cases is {}, but max-threads is {} thread, will be grouped.",
+                self.name, test_cases.len(), max_thread);
 
-            let mut rng = thread_rng();
-            let mut shuffled_tests = test_cases;
-            shuffled_tests.shuffle(&mut rng);
+                let mut rng = thread_rng();
+                let mut shuffled_tests = test_cases;
+                shuffled_tests.shuffle(&mut rng);
 
-            let mut results = Vec::new();
-            for chunk in shuffled_tests.chunks(max_thread) {
-                let chunk_results: Vec<_> = chunk.into_par_iter().map(|test| test.run()).collect();
-                results.extend(chunk_results);
+                let mut results = Vec::new();
+                for chunk in shuffled_tests.chunks(max_thread) {
+                    let chunk_results: Vec<_> = chunk.into_par_iter().map(|test| test.run()).collect();
+                    results.extend(chunk_results);
+                }
+                results
+            } else {
+                test_cases.into_par_iter().map(|test| test.run()).collect()
             }
-            results
         } else {
             test_cases.into_par_iter().map(|test| test.run()).collect()
         };
