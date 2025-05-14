@@ -149,18 +149,22 @@ impl Config {
             tests
                 .into_iter()
                 .filter(|test| !concurrency_tests.contains(&test.name))
-                .map(|mut test| {
-                    if test.serial.is_none() && self.default_serial && test.thread_num == 1 {
-                        warn!(
-                            "Test case {} marked as serial because of default_serial is set",
-                            test.name
-                        );
-                        test.serial = Some(true);
-                    }
-                    test
-                })
                 .collect::<Vec<_>>()
         };
+
+        tests = tests
+        .into_iter()
+        .map(|mut test| {
+            if test.serial.is_none() && self.default_serial && test.thread_num == 1 {
+                warn!(
+                    "Test case {} marked as serial because of default_serial is set",
+                    test.name
+                );
+                test.serial = Some(true);
+            }
+            test
+        })
+        .collect::<Vec<_>>();
 
         // run remaining test cases
         for test in tests {
