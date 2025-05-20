@@ -61,7 +61,7 @@ impl Cmd {
         let lib_parser = LibParse::get_instance()?.read().unwrap();
         let ret: i64 = if self.perf {
             let (ans, perf) = lib_parser.execute_with_perf(self.opfunc.clone(), &self.args)?;
-            info!("cmd '{}' executed cost {}", self.opfunc, perf);
+            info!("cmd '{}{:?}' executed cost {}", self.opfunc, &self.args, perf);
             ans
         } else {
             lib_parser.execute(self.opfunc.clone(), &self.args)?
