@@ -259,12 +259,12 @@ impl Test {
             match value {
                 ArgValue::Single(_) => continue,
                 ArgValue::List(items) => {
-                    for (i, item) in items.iter().enumerate() {
+                    for (_, item) in items.iter().enumerate() {
                         let mut new_input = current.clone();
                         new_input
                             .args
                             .insert(key.clone(), ArgValue::Single(item.clone()));
-                        new_input.name = format!("{}_{}", input.name, i);
+                        new_input.name = format!("{}_{}={}", input.name, &key, &item);
                         expanded.push(new_input);
                     }
                     return expanded;
@@ -278,12 +278,12 @@ impl Test {
                         i += step;
                     }
 
-                    for (i, val) in values.iter().enumerate() {
+                    for (_, val) in values.iter().enumerate() {
                         let mut new_input = current.clone();
                         new_input
                             .args
                             .insert(key.clone(), ArgValue::Single(val.clone()));
-                        new_input.name = format!("{}_{}", input.name, i);
+                        new_input.name = format!("{}_{}={}", input.name, key, val);
                         expanded.push(new_input);
                     }
                     return expanded;
