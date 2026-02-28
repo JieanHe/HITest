@@ -45,7 +45,7 @@ impl ConcurrencyGroup {
             self.name, self.tests
         );
         let max_thread = {
-            let res_env = ResourceEnv::get_instance().read().unwrap();
+            let res_env = ResourceEnv::get_instance().unwrap().read().unwrap();
             res_env.max_threads
         };
         let results: Vec<_> = if let Some(max_thread) = max_thread{

@@ -199,6 +199,7 @@ impl Config {
         )
         .unwrap();
         stdout.reset().unwrap();
+        stdout.flush().unwrap();
     }
 }
 
