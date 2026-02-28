@@ -45,10 +45,10 @@ static mut INSTANCE: Option<RwLock<ResourceEnv>> = None;
 static INIT: Once = Once::new();
 
 impl ResourceEnv {
-    pub fn get_instance() -> &'static RwLock<ResourceEnv> {
+    pub fn get_instance() -> Option<&'static RwLock<ResourceEnv>> {
         #[cfg_attr(unix, allow(static_mut_refs))]
         unsafe {
-            INSTANCE.as_ref().unwrap()
+            INSTANCE.as_ref()
         }
     }
 

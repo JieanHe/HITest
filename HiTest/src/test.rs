@@ -58,7 +58,7 @@ impl Test {
         );
         match unsafe { fork() } {
             Ok(ForkResult::Child) => {
-                let res_env = ResourceEnv::get_instance().read().unwrap();
+                let res_env = ResourceEnv::get_instance().unwrap().read().unwrap();
                 if let Some(process_env) = &res_env.process_env {
                     process_env.apply_env_init();
                 }
@@ -123,22 +123,27 @@ impl Test {
         }
     }
 
+    fn apply_thread_env(&self, cmds: &mut Vec<Cmd>) {
+        if let Some(instance) = ResourceEnv::get_instance() {
+            let res_env = instance.read().unwrap();
+            if let Some(thread_env) = res_env.thread_env.as_ref(){
+                info!("start executing test case {} with thread env.", self.name);
+
+                for cmd in thread_env.init.iter().rev() {
+                    cmds.insert(0, cmd.clone());
+                }
+
+                cmds.extend(thread_env.exit.iter().cloned());
+            }
+        };
+    }
+
     fn run_one_thread(&self) -> bool {
         let mut cmds: Vec<Cmd> = self.cmds.clone();
         let is_main_thread = ThreadInfo::get_instance().lock().unwrap().is_main_thread();
 
         if !is_main_thread {
-            let res_env = ResourceEnv::get_instance().read().unwrap();
-            if res_env.thread_env.is_some() {
-                let thread_env = res_env.thread_env.as_ref().unwrap();
-                info!("start executing test case {} with thread env.", self.name);
-                for cmd in thread_env.init.iter().rev() {
-                    cmds.insert(0, cmd.clone());
-                }
-                for cmd in &thread_env.exit {
-                    cmds.push(cmd.clone());
-                }
-            }
+            self.apply_thread_env(&mut cmds);
         }
 
         info!("start executing test case {}.", self.name);
@@ -331,7 +336,7 @@ impl Test {
         } else {
             info!("Run test {} with {} sub tests parallelly!", self.name, tests.len());
             let max_thread = {
-                let res_env = ResourceEnv::get_instance().read().unwrap();
+                let res_env = ResourceEnv::get_instance().unwrap().read().unwrap();
                 res_env.max_threads
             };
             let results: Vec<_> = if let Some(max_thread) = max_thread {
