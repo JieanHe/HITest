@@ -7,7 +7,7 @@ use rand::thread_rng;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::fmt;
+use std::{fmt, panic};
 #[cfg(unix)]
 use std::process::exit;
 use thiserror::Error;
@@ -302,20 +302,31 @@ impl Test {
     }
 
     fn execute(&self) -> bool {
-        if self.should_panic {
-            #[cfg(unix)]
-            {
-                let mut child_test = self.clone();
-                child_test.should_panic = false;
-                Test::check_panic(child_test)
+        // std::panic not send to other thread
+        let result = panic::catch_unwind(|| {
+            if self.should_panic {
+                #[cfg(unix)]
+                {
+                    let mut child_test = self.clone();
+                    child_test.should_panic = false;
+                    Test::check_panic(child_test)
+                }
+                #[cfg(not(unix))]
+                {
+                    error!("panic check is not supported on this platform.");
+                    false
+                }
+            } else {
+                self.run_one_thread()
             }
-            #[cfg(not(unix))]
-            {
-                error!("panic check is not supported on this platform.");
+        });
+
+        match result {
+            Ok(success) => success,
+            Err(_) => {
+                error!("Test {} panicked during execution", self.name);
                 false
             }
-        } else {
-            self.run_one_thread()
         }
     }
     pub fn run(&self) -> TestResult {
