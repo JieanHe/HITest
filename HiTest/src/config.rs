@@ -119,7 +119,7 @@ impl Config {
             })
             .collect::<Vec<_>>();
 
-        let mut total_tests = 0;
+        let mut failed_tests = 0;
         let mut success_tests = 0;
         tests = if let Some(ref debug_test) = self.debug_test {
             info!("Starting debug test: {}", debug_test);
@@ -139,8 +139,8 @@ impl Config {
                 info!("Starting run concurrency groups!");
                 for concurrency in concurrences {
                     let res = concurrency.run(&tests);
-                    total_tests += res.total;
-                    success_tests += res.success;
+                    success_tests += res.passed;
+                    failed_tests += res.failed;
                     concurrency.record_test(&mut concurrency_tests);
                 }
             }
@@ -169,8 +169,8 @@ impl Config {
         // run remaining test cases
         for test in tests {
             let res = test.run();
-            total_tests += res.total;
-            success_tests += res.success;
+            success_tests += res.passed;
+            failed_tests += res.failed;
         }
 
         // apply env exit
@@ -181,7 +181,7 @@ impl Config {
             process_env.apply_env_exit();
         }
         let mut stdout = StandardStream::stdout(ColorChoice::Always);
-        if total_tests == success_tests {
+        if failed_tests == 0 {
             stdout
                 .set_color(ColorSpec::new().set_fg(Some(Color::Green)))
                 .unwrap();
@@ -193,9 +193,9 @@ impl Config {
         writeln!(
             stdout,
             "Global Summary: Total tests: {}, Success: {}, Failure: {}",
-            total_tests,
+            failed_tests + success_tests,
             success_tests,
-            total_tests - success_tests
+            failed_tests
         )
         .unwrap();
         stdout.reset().unwrap();

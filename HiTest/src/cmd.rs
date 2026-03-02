@@ -5,6 +5,15 @@ use serde::Deserialize;
 use std::error::Error;
 use std::fmt;
 
+pub const TEST_RET_SKIP: i64 = -255;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ExecStatus {
+    Passed,
+    Failed,
+    Skipped,
+}
+
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct Cmd {
     pub opfunc: String,
@@ -55,7 +64,7 @@ impl Cmd {
         }
     }
 
-    pub fn run(&self) -> Result<bool, Box<dyn Error>> {
+    pub fn run(&self) -> Result<ExecStatus, Box<dyn Error>> {
         debug!("start executing cmd {} ", self);
 
         let lib_parser = LibParse::get_instance()?.read().unwrap();
@@ -66,6 +75,10 @@ impl Cmd {
         } else {
             lib_parser.execute(self.opfunc.clone(), &self.args)?
         };
+        if ret == TEST_RET_SKIP {
+            debug!("cmd '{}' returned SKIP code {}. Case will be skipped.", self.opfunc, ret);
+            return Ok(ExecStatus::Skipped);
+        }
         let (expected, operator, is_success) = match &self.condition {
             Condition::Eq(v) => {
                 let expected = Cmd::parse_value(&v)?;
@@ -88,11 +101,12 @@ impl Cmd {
 
         if !is_success {
             error!("{} validate failed", message);
+            Ok(ExecStatus::Failed)
         } else {
             debug!("{} validate succeeded", message);
+            Ok(ExecStatus::Passed)
         }
 
-        Ok(is_success)
     }
 }
 

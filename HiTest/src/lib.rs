@@ -3,7 +3,7 @@ use concurrency::ConcurrencyGroup;
 mod condition;
 use condition::Condition;
 mod cmd;
-use cmd::Cmd;
+use cmd::{Cmd, ExecStatus};
 mod test;
 use test::{Test, TestResult};
 mod config;

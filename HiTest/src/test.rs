@@ -1,4 +1,4 @@
-use super::{ArgValue, Cmd, Condition, InputGroup, ResourceEnv, ThreadInfo};
+use super::{ArgValue, Cmd, ExecStatus, Condition, InputGroup, ResourceEnv, ThreadInfo};
 use log::{debug, error, info, warn};
 #[cfg(unix)]
 use nix::{sys::wait::waitpid, sys::wait::WaitStatus, unistd::fork, unistd::ForkResult};
@@ -35,9 +35,11 @@ pub struct Test {
     #[serde(default)]
     pub serial: Option<bool>,
 }
+#[derive(Default)]
 pub struct TestResult {
-    pub success: usize,
-    pub total: usize,
+    pub passed: usize,
+    pub failed: usize,
+    pub skipped: usize,
 }
 
 #[derive(Debug, Error)]
@@ -49,9 +51,13 @@ pub enum TestError {
     SharedInputNotFound(String),
 }
 
+const EXIT_CODE_PASSED: i32 = 0;
+const EXIT_CODE_FAILED: i32 = 1;
+const EXIT_CODE_SKIPPED: i32 = 2;
+
 impl Test {
     #[cfg(unix)]
-    fn check_panic(mut child_test: Self) -> bool {
+    fn check_panic(mut child_test: Self) -> ExecStatus {
         info!(
             "start executing test case {} with panic check.",
             child_test.name
@@ -67,6 +73,7 @@ impl Test {
                 }
                 child_test.thread_num = 1;
                 child_test.should_panic = false;
+
                 if let Some(thread_env) = &res_env.thread_env {
                     thread_env.apply_env_exit();
                 }
@@ -75,7 +82,12 @@ impl Test {
                 }
                 let res = child_test.run_one_thread();
 
-                exit(if res { 0 } else { 1 });
+                let exit_code = match res {
+                    ExecStatus::Passed => EXIT_CODE_PASSED,
+                    ExecStatus::Failed => EXIT_CODE_FAILED,
+                    ExecStatus::Skipped => EXIT_CODE_SKIPPED,
+                };
+                exit(exit_code);
             }
             Ok(ForkResult::Parent { child }) => {
                 let timeout = std::time::Duration::from_secs(1);
@@ -90,35 +102,43 @@ impl Test {
                                     "Test case {} check panic failed! Child process timeout.",
                                     child_test.name
                                 );
-                                return false;
+                                return ExecStatus::Failed;
                             }
                             std::thread::sleep(std::time::Duration::from_millis(100));
                             continue;
                         }
                         Ok(status) => match status {
                             WaitStatus::Exited(_, code) => {
-                                error!("Test case {} check panic failed! hild process exit as code {} .", child_test.name, code);
-                                return false;
+                                match code {
+                                    EXIT_CODE_SKIPPED => {
+                                        info!("Test case {} skipped during panic check.", child_test.name);
+                                        return ExecStatus::Skipped;
+                                    }
+                                    _ => {
+                                        error!("Test case {} check panic failed! Exited with code {}.", child_test.name, code);
+                                        return ExecStatus::Failed;
+                                    }
+                                }
                             }
                             WaitStatus::Signaled(_, signal, _) => {
                                 info!("Test case {} check panic successfully! crashed with signal {:#?}.", child_test.name, signal);
-                                return true;
+                                return ExecStatus::Passed;
                             }
                             _ => {
                                 error!("Unexpected child status: {:?}", status);
-                                return false;
+                                return ExecStatus::Failed;
                             }
                         },
                         Err(e) => {
                             error!("Waitpid error: {}", e);
-                            return false;
+                            return ExecStatus::Failed;
                         }
                     }
                 }
             }
             Err(e) => {
                 error!("Fork failed: {}", e);
-                false
+                return ExecStatus::Failed;
             }
         }
     }
@@ -138,7 +158,7 @@ impl Test {
         };
     }
 
-    fn run_one_thread(&self) -> bool {
+    fn run_one_thread(&self) -> ExecStatus {
         let mut cmds: Vec<Cmd> = self.cmds.clone();
         let is_main_thread = ThreadInfo::get_instance().lock().unwrap().is_main_thread();
 
@@ -147,34 +167,40 @@ impl Test {
         }
 
         info!("start executing test case {}.", self.name);
-        let mut all_success = true;
+        let mut final_status = ExecStatus::Passed;
         for cmd in cmds {
             match cmd.run() {
-                Ok(v) => {
-                    if !v {
-                        all_success = false;
-                        if self.break_if_fail {
-                            debug!(
-                                "Test case {} stopped because cmd {} failed!",
-                                self.name, &cmd.opfunc
-                            );
-                            break;
+                Ok(status) => {
+                    match status {
+                        ExecStatus::Failed => {
+                            if self.break_if_fail {
+                                debug!("Test case {} stopped because cmd {} failed!", self.name, &cmd.opfunc);
+                                return ExecStatus::Failed
+                            }
+                            final_status = ExecStatus::Failed;
+                        }
+                        ExecStatus::Skipped => {
+                            debug!("Test case {} skipped by cmd {} pre-check.", self.name, &cmd.opfunc);
+                            return ExecStatus::Skipped;
+                        }
+                        ExecStatus::Passed => {
+                            // continue
                         }
                     }
                 }
                 Err(e) => {
                     error!("execute cmd {} failed! Error: {}\n", &cmd.opfunc, e);
-                    return false;
+                    final_status = ExecStatus::Failed
                 }
             }
         }
-        if all_success {
+        if final_status == ExecStatus::Passed {
             info!("Test case {} execute successfully!\n", self.name);
         } else {
             error!("Test case {} execute failed!\n", self.name);
         }
 
-        all_success
+        final_status
     }
 
     fn process_input_group(&self) -> Vec<Test> {
@@ -301,7 +327,7 @@ impl Test {
         vec![current]
     }
 
-    fn execute(&self) -> bool {
+    fn execute(&self) -> ExecStatus {
         // std::panic not send to other thread
         let result = panic::catch_unwind(|| {
             if self.should_panic {
@@ -314,7 +340,7 @@ impl Test {
                 #[cfg(not(unix))]
                 {
                     error!("panic check is not supported on this platform.");
-                    false
+                    ExecStatus::Failed
                 }
             } else {
                 self.run_one_thread()
@@ -325,7 +351,7 @@ impl Test {
             Ok(success) => success,
             Err(_) => {
                 error!("Test {} panicked during execution", self.name);
-                false
+                ExecStatus::Failed
             }
         }
     }
@@ -341,7 +367,20 @@ impl Test {
             .collect();
 
         let serial = self.serial.unwrap_or(false);
-        let results: Vec<_> = if serial {
+
+        let aggregate_results = |results: Vec<ExecStatus>| -> TestResult {
+            let mut res = TestResult::default();
+            for status in results {
+                match status {
+                    ExecStatus::Passed => res.passed += 1,
+                    ExecStatus::Failed => res.failed += 1,
+                    ExecStatus::Skipped => res.skipped += 1,
+                }
+            }
+            res
+        };
+
+        let results: Vec<ExecStatus> = if serial {
             info!("Run test {} with {} sub tests serially!", self.name, tests.len());
             tests.into_iter().map(|test| test.execute()).collect()
         } else {
@@ -350,7 +389,7 @@ impl Test {
                 let res_env = ResourceEnv::get_instance().unwrap().read().unwrap();
                 res_env.max_threads
             };
-            let results: Vec<_> = if let Some(max_thread) = max_thread {
+            let results: Vec<ExecStatus> = if let Some(max_thread) = max_thread {
                 if max_thread < tests.len() {
                     warn!("test case {} total sub test cases is {}, but max-threads is {} thread, will be grouped.",
                     self.name, tests.len(), max_thread);
@@ -375,22 +414,21 @@ impl Test {
             results
         };
 
-        let total_count = results.len();
-        let success_count = results.iter().filter(|&&x| x).count();
-        if total_count != success_count {
+        let test_result = aggregate_results(results);
+
+        if test_result.failed > 0 {
             error!(
-                "Test {} execute {} sub test failed! {} passed, {} failed!\n",
-                self.name,
-                total_count,
-                success_count,
-                total_count - success_count
+                "Test {} execute finished! Passed: {}, Failed: {}, Skipped: {}\n",
+                self.name, test_result.passed, test_result.failed, test_result.skipped
+            );
+        } else {
+             info!(
+                "Test {} execute finished! Passed: {}, Failed: {}, Skipped: {}\n",
+                self.name, test_result.passed, test_result.failed, test_result.skipped
             );
         }
 
-        TestResult {
-            success: success_count,
-            total: total_count,
-        }
+        test_result
     }
 
     pub fn push_back(&mut self, cmd: Cmd) {
